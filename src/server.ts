@@ -37,7 +37,7 @@ app.post('/api/chat', async (req, res) => {
     };
 
     try {
-        const stream = await graph.stream(inputs, { streamMode: "values" });
+        const stream = await graph.stream(inputs, { streamMode: "values", recursionLimit: 100 });
 
         for await (const chunk of stream) {
             const eventData: any = {};
