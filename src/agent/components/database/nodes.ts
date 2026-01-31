@@ -290,6 +290,7 @@ export async function databaseDecider(state: DatabaseSubState): Promise<Partial<
     1. Dialect Awareness: Use ${dbType} syntax.
     2. Schema First: Call get_schema if needed.
     3. Math Safety: NULLIF for division by zero.
+    4. Self-Correction: If Execution History contains a "failed" step, analyze the error and try a different/corrected query.
     
     Response Format (JSON):
     {
@@ -413,7 +414,7 @@ export async function executorNode(state: DatabaseSubState): Promise<Partial<Dat
     return {
         current_step: null,
         completed_steps: [...state.completed_steps, { ...currentStep, status, result }],
-        execution_log: [...state.execution_log, `Executed ${currentStep.tool_name}`]
+        execution_log: [...state.execution_log, status === "failed" ? `[ERROR] ${result.error}` : `Executed ${currentStep.tool_name}`]
     };
 }
 
