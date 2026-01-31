@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { buildDatabaseGraph } from './agent/components/database/graph';
 import { HumanMessage } from "@langchain/core/messages";
 import * as dotenv from "dotenv";
@@ -10,6 +11,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// API Endpoint
 app.post('/api/chat', async (req, res) => {
     const { query, config } = req.body;
 
@@ -38,24 +40,16 @@ app.post('/api/chat', async (req, res) => {
         const stream = await graph.stream(inputs, { streamMode: "values" });
 
         for await (const chunk of stream) {
-            // Chunk is the full state at each step (because streamMode="values")
-            // specific updates might be better processed via "updates" mode, but "values" is easier to debug
-
             const eventData: any = {};
 
             if (chunk.database_summary) {
                 eventData.type = "result";
                 eventData.data = chunk.database_summary;
                 res.write(`data: ${JSON.stringify(eventData)}\n\n`);
-                // If we have a summary, we are likely done, but let the loop finish naturaly? 
-                // graph.stream usually ends after END node.
             } else if (chunk.current_step) {
-                // Determine if we are "Thinking" or have "SQL"
-                // If step is pending, we are thinking/planning
                 const step = chunk.current_step;
 
                 if (step.tool_name === "execute_sql" && step.tool_parameters.query) {
-                    // Send SQL update
                     res.write(`data: ${JSON.stringify({
                         type: "sql_generated",
                         sql: step.tool_parameters.query,
@@ -64,14 +58,12 @@ app.post('/api/chat', async (req, res) => {
                     })}\n\n`);
                 }
 
-                // Also send general "thinking" state
                 res.write(`data: ${JSON.stringify({
                     type: "thinking",
                     step: step.description,
                     log: chunk.execution_log.slice(-1)[0]
                 })}\n\n`);
             } else {
-                // Initial state or planning
                 res.write(`data: ${JSON.stringify({
                     type: "thinking",
                     step: "Planning execution path...",
@@ -89,8 +81,23 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-const PORT = 3001;
+// Serve static files from the React app dist folder
+const clientDistPath = path.join(process.cwd(), 'client', 'dist');
+app.use(express.static(clientDistPath));
+
+// Catch-all route to serve the React app
+app.get('*', (req, res) => {
+    // Only serve index.html if it's not an API call
+    if (!req.path.startsWith('/api')) {
+        res.sendFile(path.join(clientDistPath, 'index.html'));
+    } else {
+        res.status(404).json({ error: "API route not found" });
+    }
+});
+
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
     console.log(`API Endpoint: http://localhost:${PORT}/api/chat`);
 });
+
