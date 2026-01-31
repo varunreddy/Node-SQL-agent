@@ -46,7 +46,7 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
 
     if (provider === 'gemini') {
         return new ChatGoogleGenerativeAI({
-            modelName,
+            model: modelName,
             temperature,
             apiKey,
             ...(options.jsonMode ? { responseMimeType: "application/json" } : {})
