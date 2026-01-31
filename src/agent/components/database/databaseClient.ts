@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult } from 'pg';
+import knex, { Knex } from 'knex';
 import { EventEmitter } from 'events';
 
 export const logger = {
@@ -8,73 +8,103 @@ export const logger = {
 };
 
 export class DatabaseClient extends EventEmitter {
-    private pool: Pool;
-    private client: PoolClient | null = null;
-    private inTransaction: boolean = false;
+    private db: Knex | null = null;
     private schemaCache: Record<string, string[]> = {};
-
     private static instances: Map<string, DatabaseClient> = new Map();
 
-    private constructor(connectionString?: string) {
+    private constructor(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string }) {
         super();
-        // Default to a dummy connection string or env variable if not provided
-        const connStr = connectionString || process.env.DATABASE_URL || "postgres://user:password@localhost:5432/postgres";
+        const { dbType, dbUrl, sqlitePath } = config;
 
-        this.pool = new Pool({
-            connectionString: connStr,
-            max: 5,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 2000,
-        });
+        let knexConfig: Knex.Config;
 
-        this.pool.on('error', (err) => {
-            logger.error('Unexpected error on idle client: ' + err.message);
-        });
+        if (dbType === 'sqlite') {
+            knexConfig = {
+                client: 'sqlite3',
+                connection: {
+                    filename: sqlitePath || './database.sqlite'
+                },
+                useNullAsDefault: true
+            };
+        } else {
+            knexConfig = {
+                client: dbType === 'postgres' ? 'pg' : 'mysql2',
+                connection: dbUrl,
+                pool: { min: 0, max: 5 }
+            };
+        }
+
+        this.db = knex(knexConfig);
     }
 
-    public static getInstance(connectionString?: string): DatabaseClient {
-        const key = connectionString || process.env.DATABASE_URL || "default";
+    public static getInstance(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string }): DatabaseClient {
+        const key = config.dbUrl || config.sqlitePath || "default";
         if (!DatabaseClient.instances.has(key)) {
-            DatabaseClient.instances.set(key, new DatabaseClient(connectionString));
+            DatabaseClient.instances.set(key, new DatabaseClient(config));
         }
         return DatabaseClient.instances.get(key)!;
     }
 
     async connect() {
-        // Basic connectivity check
         try {
-            const client = await this.pool.connect();
-            client.release();
-            logger.info("Successfully connected to database pool.");
+            if (!this.db) throw new Error("Knex not initialized");
+            // Check connectivity
+            await this.db.raw('select 1+1 as result');
+            logger.info(`Successfully connected to ${this.db.client.config.client} database.`);
             await this.refreshSchemaCache();
         } catch (err: any) {
             logger.error("Failed to connect to database: " + err.message);
+            throw err;
         }
     }
 
     async refreshSchemaCache() {
+        if (!this.db) return;
         try {
-            const query = `
-        SELECT table_name, column_name 
-        FROM information_schema.columns 
-        WHERE table_schema = 'public' 
-        ORDER BY table_name, ordinal_position;
-      `;
-            const result = await this.executeQuery(query);
+            const clientType = this.db.client.config.client;
+            let query = '';
 
+            if (clientType === 'pg') {
+                query = `
+                    SELECT table_name, column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' 
+                    ORDER BY table_name, ordinal_position;
+                `;
+            } else if (clientType === 'mysql2') {
+                query = `
+                    SELECT table_name, column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = DATABASE()
+                    ORDER BY table_name, ordinal_position;
+                `;
+            } else if (clientType === 'sqlite3') {
+                // SQLite requires multiple steps or a complex query
+                const tables = await this.db.raw("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+                const newCache: Record<string, string[]> = {};
+
+                for (const table of tables) {
+                    const columns = await this.db.raw(`PRAGMA table_info(${table.name})`);
+                    newCache[table.name] = columns.map((c: any) => c.name);
+                }
+                this.schemaCache = newCache;
+                logger.info(`Refreshed schema cache (SQLite). Found tables: ${Object.keys(this.schemaCache).join(", ")}`);
+                return;
+            }
+
+            const result = await this.executeQuery(query);
             const newCache: Record<string, string[]> = {};
+
             if (result.data) {
                 for (const row of result.data) {
-                    const tableName = row.table_name;
-                    const colName = row.column_name;
-                    if (!newCache[tableName]) {
-                        newCache[tableName] = [];
-                    }
+                    const tableName = row.table_name || row.TABLE_NAME;
+                    const colName = row.column_name || row.COLUMN_NAME;
+                    if (!newCache[tableName]) newCache[tableName] = [];
                     newCache[tableName].push(colName);
                 }
             }
             this.schemaCache = newCache;
-            logger.info(`Refreshed schema cache. Found tables: ${Object.keys(this.schemaCache).join(", ")}`);
+            logger.info(`Refreshed schema cache (${clientType}). Found tables: ${Object.keys(this.schemaCache).join(", ")}`);
         } catch (err: any) {
             logger.error("Failed to refresh schema cache: " + err.message);
         }
@@ -85,81 +115,48 @@ export class DatabaseClient extends EventEmitter {
     }
 
     async executeQuery(query: string, params?: any[]): Promise<{ success: boolean; data?: any[]; rowCount?: number; message?: string; error?: string }> {
-        const start = Date.now();
-        let client = this.client;
-        let release = false;
+        if (!this.db) return { success: false, error: "Database not connected" };
 
         try {
-            if (!client) {
-                client = await this.pool.connect();
-                release = true;
-            }
-
             console.log(`\n======\n${query}\n======\n`);
+            const result = await this.db.raw(query, params || []);
 
-            const result: QueryResult = await client.query(query, params);
+            let data: any[] = [];
+            let rowCount = 0;
 
-            const duration = Date.now() - start;
-            // logger.info(`Query executed in ${duration}ms`);
+            // Normalize results based on dialect
+            const clientType = this.db.client.config.client;
+            if (clientType === 'pg') {
+                data = result.rows;
+                rowCount = result.rowCount;
+            } else if (clientType === 'mysql2') {
+                data = result[0];
+                rowCount = data.length;
+            } else if (clientType === 'sqlite3') {
+                data = result;
+                rowCount = result.length;
+            }
 
             return {
                 success: true,
-                data: result.rows,
-                rowCount: result.rowCount || 0,
-                message: `Query returned ${result.rowCount} rows.`
+                data,
+                rowCount,
+                message: `Query returned ${rowCount} rows.`
             };
-
         } catch (err: any) {
             logger.error(`Database Error: ${err.message}`);
             return {
                 success: false,
                 error: err.message
             };
-        } finally {
-            if (release && client) {
-                client.release();
-            }
         }
     }
 
-    async beginTransaction() {
-        if (this.inTransaction) {
-            throw new Error("Transaction already in progress");
-        }
-        this.client = await this.pool.connect();
-        await this.client.query('BEGIN');
-        this.inTransaction = true;
-        logger.info("Transaction started.");
-        return { success: true, message: "Transaction started." };
-    }
-
-    async commitTransaction() {
-        if (!this.inTransaction || !this.client) {
-            throw new Error("No active transaction to commit");
-        }
-        try {
-            await this.client.query('COMMIT');
-            logger.info("Transaction committed.");
-            return { success: true, message: "Transaction committed." };
-        } finally {
-            this.client.release();
-            this.client = null;
-            this.inTransaction = false;
-        }
-    }
-
-    async rollbackTransaction() {
-        if (!this.inTransaction || !this.client) {
-            throw new Error("No active transaction to rollback");
-        }
-        try {
-            await this.client.query('ROLLBACK');
-            logger.info("Transaction rolled back.");
-            return { success: true, message: "Transaction rolled back." };
-        } finally {
-            this.client.release();
-            this.client = null;
-            this.inTransaction = false;
+    async disconnect() {
+        if (this.db) {
+            await this.db.destroy();
+            this.db = null;
+            logger.info("Database connection destroyed.");
         }
     }
 }

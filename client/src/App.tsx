@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   Database, Send, Terminal, CheckCircle2,
   Loader2, History, ChevronLeft, ChevronRight,
-  Server, Lock, User, Globe, Hash, Save, Check
+  Server, Lock, User, Globe, Hash, Save, Check, FileCode
 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -15,11 +15,13 @@ interface LLMConfig {
 }
 
 interface Config {
+  dbType: 'postgres' | 'mysql' | 'sqlite';
   dbHost: string;
   dbPort: string;
   dbName: string;
   dbUser: string;
   dbPass: string;
+  sqlitePath: string;
   llmConfig: LLMConfig;
 }
 
@@ -35,11 +37,13 @@ export default function App() {
   const [activeConfig, setActiveConfig] = useState<Config>(() => {
     const saved = localStorage.getItem('sql-agent-config-v3');
     return saved ? JSON.parse(saved) : {
+      dbType: 'postgres',
       dbHost: '',
       dbPort: '5432',
       dbName: '',
       dbUser: '',
       dbPass: '',
+      sqlitePath: './database.sqlite',
       llmConfig: {
         apiKey: '',
         baseUrl: 'https://api.groq.com/openai/v1',
@@ -82,15 +86,17 @@ export default function App() {
   };
 
   const buildDbUrl = (c: Config) => {
+    if (c.dbType === 'sqlite') return c.sqlitePath;
     if (!c.dbHost || !c.dbUser) return '';
-    return `postgres://${c.dbUser}:${c.dbPass}@${c.dbHost}:${c.dbPort}/${c.dbName}`;
+    const prefix = c.dbType === 'postgres' ? 'postgres://' : 'mysql://';
+    return `${prefix}${c.dbUser}:${c.dbPass}@${c.dbHost}:${c.dbPort}/${c.dbName}`;
   };
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
 
     const dbUrl = buildDbUrl(activeConfig);
-    if (!dbUrl) {
+    if (!dbUrl && activeConfig.dbType !== 'sqlite') {
       setStatus('error');
       setCurrentThought('Database configuration is incomplete or not saved.');
       return;
@@ -107,7 +113,9 @@ export default function App() {
         query: prompt,
         config: {
           ...activeConfig,
-          dbUrl
+          dbType: activeConfig.dbType,
+          dbUrl,
+          sqlitePath: activeConfig.sqlitePath
         }
       };
 
@@ -219,54 +227,82 @@ export default function App() {
 
             <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Globe className="w-3 h-3 mr-1" /> Host</label>
-                <input
-                  type="text"
-                  value={stagedConfig.dbHost}
-                  onChange={(e) => setStagedConfig({ ...stagedConfig, dbHost: e.target.value })}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
-                  placeholder="localhost"
-                />
+                <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Engine</label>
+                <select
+                  value={stagedConfig.dbType}
+                  onChange={(e) => setStagedConfig({ ...stagedConfig, dbType: e.target.value as any })}
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="postgres" className="bg-background">PostgreSQL</option>
+                  <option value="mysql" className="bg-background">MySQL</option>
+                  <option value="sqlite" className="bg-background">SQLite</option>
+                </select>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1 col-span-1">
-                  <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Port</label>
+
+              {stagedConfig.dbType === 'sqlite' ? (
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><FileCode className="w-3 h-3 mr-1" /> DB Path</label>
                   <input
                     type="text"
-                    value={stagedConfig.dbPort}
-                    onChange={(e) => setStagedConfig({ ...stagedConfig, dbPort: e.target.value })}
+                    value={stagedConfig.sqlitePath}
+                    onChange={(e) => setStagedConfig({ ...stagedConfig, sqlitePath: e.target.value })}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
+                    placeholder="./database.sqlite"
                   />
                 </div>
-                <div className="space-y-1 col-span-2">
-                  <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Database className="w-3 h-3 mr-1" /> Database</label>
-                  <input
-                    type="text"
-                    value={stagedConfig.dbName}
-                    onChange={(e) => setStagedConfig({ ...stagedConfig, dbName: e.target.value })}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
-                    placeholder="postgres"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><User className="w-3 h-3 mr-1" /> Username</label>
-                <input
-                  type="text"
-                  value={stagedConfig.dbUser}
-                  onChange={(e) => setStagedConfig({ ...stagedConfig, dbUser: e.target.value })}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Lock className="w-3 h-3 mr-1" /> Password</label>
-                <input
-                  type="password"
-                  value={stagedConfig.dbPass}
-                  onChange={(e) => setStagedConfig({ ...stagedConfig, dbPass: e.target.value })}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
-                />
-              </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Globe className="w-3 h-3 mr-1" /> Host</label>
+                    <input
+                      type="text"
+                      value={stagedConfig.dbHost}
+                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbHost: e.target.value })}
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                      placeholder="localhost"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1 col-span-1">
+                      <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Port</label>
+                      <input
+                        type="text"
+                        value={stagedConfig.dbPort}
+                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbPort: e.target.value })}
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Database className="w-3 h-3 mr-1" /> Database</label>
+                      <input
+                        type="text"
+                        value={stagedConfig.dbName}
+                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbName: e.target.value })}
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
+                        placeholder="postgres"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><User className="w-3 h-3 mr-1" /> Username</label>
+                    <input
+                      type="text"
+                      value={stagedConfig.dbUser}
+                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbUser: e.target.value })}
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Lock className="w-3 h-3 mr-1" /> Password</label>
+                    <input
+                      type="password"
+                      value={stagedConfig.dbPass}
+                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbPass: e.target.value })}
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </section>
 

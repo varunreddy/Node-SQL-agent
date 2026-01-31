@@ -50,7 +50,9 @@ export interface PlannerOutput {
 import { LLMConfig } from "../../core/llmFactory";
 
 export interface AgentConfig {
-    dbUrl?: string;
+    dbType?: 'postgres' | 'mysql' | 'sqlite';
+    dbUrl?: string; // used for pg/mysql connection string
+    sqlitePath?: string; // used for sqlite
     llmConfig?: LLMConfig;
 }
 
