@@ -179,17 +179,40 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans selection:bg-primary/30">
+    <div className="flex flex-col md:flex-row h-screen bg-background text-foreground overflow-hidden font-sans selection:bg-primary/30 relative">
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center justify-between p-4 border-b border-border/50 bg-slate-950/80 backdrop-blur-md z-30">
+        <div className="flex items-center space-x-2">
+          <Database className="w-5 h-5 text-primary" />
+          <span className="font-bold text-sm vibrant-text">SQL Agent</span>
+        </div>
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-2 bg-primary/10 rounded-lg border border-primary/20 text-primary active:scale-95 transition-transform"
+        >
+          <History className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity animate-in fade-in duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar - Configuration */}
       <aside
         className={clsx(
-          "glass border-r flex flex-col transition-all duration-300 ease-in-out z-20 relative",
-          isSidebarOpen ? "w-80 p-6" : "w-16 p-4"
+          "glass border-r flex flex-col transition-all duration-300 ease-in-out z-50",
+          "fixed inset-y-0 left-0 md:relative md:translate-x-0 h-full",
+          isSidebarOpen ? "w-[280px] md:w-80 p-6 translate-x-0" : "-translate-x-full md:translate-x-0 md:w-16 md:p-4"
         )}
       >
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute -right-3 top-10 w-6 h-6 bg-primary rounded-full flex items-center justify-center text-white border-2 border-background shadow-lg hover:scale-110 transition-transform"
+          className="hidden md:flex absolute -right-3 top-10 w-6 h-6 bg-primary rounded-full items-center justify-center text-white border-2 border-background shadow-lg hover:scale-110 transition-transform z-50"
         >
           {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
@@ -403,15 +426,15 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Content Area - Split Layout Refactor */}
-      <main className="flex-1 flex flex-row overflow-hidden relative">
+      {/* Main Content Area - Responsive Split */}
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] pointer-events-none rounded-full" />
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 blur-[120px] pointer-events-none rounded-full" />
 
-        {/* Left Column: Prompt & Results (Split vertically 50/50) */}
-        <div className="w-2/5 flex flex-col border-r border-border/50 bg-black/10 backdrop-blur-sm z-10 overflow-hidden">
+        {/* Column 1: Prompt & Results */}
+        <div className="w-full md:w-2/5 flex flex-col border-b md:border-b-0 md:border-r border-border/50 bg-black/10 backdrop-blur-sm z-10 overflow-hidden h-[60%] md:h-full">
           {/* Top: Prompt */}
-          <div className="h-1/2 p-8 flex flex-col space-y-4 border-b border-border/50 overflow-hidden">
+          <div className="h-1/2 p-4 md:p-8 flex flex-col space-y-4 border-b border-border/50 overflow-hidden">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
                 <Terminal className="w-4 h-4 text-primary" />
@@ -422,7 +445,7 @@ export default function App() {
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full h-full bg-secondary/10 border border-border/50 rounded-2xl p-6 text-sm resize-none focus:ring-2 focus:ring-primary/30 outline-none transition-all placeholder:text-muted-foreground/30 shadow-2xl glass-card leading-relaxed font-medium"
+                className="w-full h-full bg-secondary/10 border border-border/50 rounded-2xl p-4 md:p-6 text-sm resize-none focus:ring-2 focus:ring-primary/30 outline-none transition-all placeholder:text-muted-foreground/30 shadow-2xl glass-card leading-relaxed font-medium"
                 placeholder="Ask your query..."
               />
               <button
@@ -437,13 +460,13 @@ export default function App() {
 
           {/* Bottom: Analytical Results */}
           <div className="h-1/2 flex flex-col overflow-hidden group">
-            <div className="px-8 py-4 border-b border-border/50 flex items-center space-x-3 bg-black/20">
+            <div className="px-4 md:px-8 py-3 md:py-4 border-b border-border/50 flex items-center space-x-3 bg-black/20">
               <div className="p-1.5 bg-accent/10 rounded-md">
                 <History className="w-4 h-4 text-accent" />
               </div>
               <span className="text-xs font-bold tracking-widest uppercase text-accent">Analytical Results</span>
             </div>
-            <div className="flex-1 overflow-auto p-6 custom-scrollbar bg-black/5">
+            <div className="flex-1 overflow-auto p-4 md:p-6 custom-scrollbar bg-black/5">
               {results ? (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
                   {results.summary_text && (
@@ -490,9 +513,9 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right Column: SQL Reasoning & Workspace (Full Height) */}
-        <div className="flex-1 flex flex-col bg-transparent relative overflow-hidden z-10">
-          <div className="px-8 py-4 border-b border-border/50 flex items-center justify-start space-x-6 bg-black/20">
+        {/* Column 2: SQL Reasoning & Workspace */}
+        <div className="flex-1 flex flex-col bg-transparent relative overflow-hidden z-10 h-[40%] md:h-full">
+          <div className="px-4 md:px-8 py-3 md:py-4 border-b border-border/50 flex items-center justify-start space-x-4 md:space-x-6 bg-black/20">
             <div className="flex items-center space-x-3 shrink-0">
               {status === 'thinking' ? (
                 <Loader2 className="w-4 h-4 text-primary animate-spin" />
@@ -508,12 +531,12 @@ export default function App() {
                 Agent Reasoning & SQL
               </span>
             </div>
-            <div className="text-[11px] text-primary/80 font-mono font-bold truncate max-w-[500px] px-3 py-1 bg-primary/10 rounded-full border border-primary/20 shrink min-w-0">
+            <div className="text-[10px] md:text-[11px] text-primary/80 font-mono font-bold truncate max-w-[150px] md:max-w-[500px] px-3 py-1 bg-primary/10 rounded-full border border-primary/20 shrink min-w-0">
               {currentThought || "Awaiting instructions..."}
             </div>
           </div>
 
-          <div className="flex-1 bg-black/10 p-8 relative group overflow-hidden">
+          <div className="flex-1 bg-black/10 p-4 md:p-8 relative group overflow-hidden">
             {activeSql ? (
               <div className="animate-in fade-in zoom-in-95 duration-500 h-full overflow-auto custom-scrollbar glass-card rounded-2xl border border-border/30 p-2">
                 <SyntaxHighlighter
