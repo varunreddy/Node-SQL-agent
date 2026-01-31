@@ -97,8 +97,8 @@ export default function App() {
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
 
-    const dbUrl = buildDbUrl(activeConfig);
-    if (!dbUrl && activeConfig.dbType !== 'sqlite') {
+    const dbUrl = buildDbUrl(stagedConfig);
+    if (!dbUrl && stagedConfig.dbType !== 'sqlite') {
       setStatus('error');
       setCurrentThought('Database configuration is incomplete or not saved.');
       return;
@@ -114,10 +114,10 @@ export default function App() {
       const payload = {
         query: prompt,
         config: {
-          ...activeConfig,
-          dbType: activeConfig.dbType,
+          ...stagedConfig,
+          dbType: stagedConfig.dbType,
           dbUrl,
-          sqlitePath: activeConfig.sqlitePath
+          sqlitePath: stagedConfig.sqlitePath
         }
       };
 
