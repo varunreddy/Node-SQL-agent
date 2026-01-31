@@ -1,10 +1,12 @@
 # SQL Agent (Node.js/TypeScript)
 
-A powerful, multi-agent SQL assistant built with Node.js, Express, and React. It uses LangGraph.js to orchestrate agents that reason about your database, generate optimized SQL, and provide analytical summaries.
+A powerful, multi-database SQL assistant built with Node.js, Express, and React. It uses LangGraph.js to orchestrate agents that reason about your database, generate optimized SQL, and provide analytical summaries.
 
 ## 🚀 Features
+- **Multi-Database Support**: Powered by **Knex.js**, the agent now supports **PostgreSQL, MySQL, and SQLite**.
+- **Dialect-Aware Reasoning**: The AI understands the specific syntax and capabilities of your selected database engine.
 - **Vibrant UI**: Modern dark theme with glassmorphism and real-time reasoning feedback.
-- **Dynamic Config**: Configure PostgreSQL and LLM providers (Groq, OpenRouter, etc.) directly in the UI.
+- **Dynamic Config**: Configure connection details and LLM providers (Groq, OpenRouter, etc.) directly in the UI.
 - **Smart Agent**: Multi-step reasoning for complex natural language queries.
 - **Syntax Highlighting**: Real-time SQL preview with syntax highlighting.
 
@@ -47,8 +49,11 @@ The UI will be available at `http://localhost:5173`.
 
 ### 2. Configure Database & LLM
 - Open the sidebar in the UI.
-- Enter your **PostgreSQL** connection details (Host, Port, User, Password, Database).
-- Enter your **LLM Provider** details (Base URL, API Key, Model).
+- **Database Engine**: Select your engine (**PostgreSQL**, **MySQL**, or **SQLite**).
+- **Connection Details**:
+  - For **PostgreSQL/MySQL**: Enter Host, Port, User, Password, and Database name.
+  - For **SQLite**: Simply provide the local file path to your `.sqlite` or `.db` file.
+- **LLM Provider**: Enter your Base URL, API Key, and Model ID.
 - Click **Save** on each section to persist the settings.
 
 ### 3. Ask Questions
