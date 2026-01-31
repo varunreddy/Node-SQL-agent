@@ -231,11 +231,11 @@ export default function App() {
                 <select
                   value={stagedConfig.dbType}
                   onChange={(e) => setStagedConfig({ ...stagedConfig, dbType: e.target.value as any })}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all appearance-none cursor-pointer"
+                  className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer"
                 >
-                  <option value="postgres" className="bg-background">PostgreSQL</option>
-                  <option value="mysql" className="bg-background">MySQL</option>
-                  <option value="sqlite" className="bg-background">SQLite</option>
+                  <option value="postgres" className="bg-slate-950 text-white">PostgreSQL</option>
+                  <option value="mysql" className="bg-slate-950 text-white">MySQL</option>
+                  <option value="sqlite" className="bg-slate-950 text-white">SQLite</option>
                 </select>
               </div>
 
