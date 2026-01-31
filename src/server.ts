@@ -86,7 +86,7 @@ const clientDistPath = path.join(process.cwd(), 'client', 'dist');
 app.use(express.static(clientDistPath));
 
 // Catch-all route to serve the React app
-app.get('/:any*', (req, res) => {
+app.get(/^(?!\/api).*/, (req, res) => {
     // Only serve index.html if it's not an API call
     if (!req.path.startsWith('/api')) {
         res.sendFile(path.join(clientDistPath, 'index.html'));
