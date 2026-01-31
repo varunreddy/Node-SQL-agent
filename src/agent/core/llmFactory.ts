@@ -19,20 +19,20 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
     const provider = options.config?.provider || 'openai';
     const modelName = options.config?.modelName || process.env.MODEL_NAME || (provider === 'openai' ? "gpt-4o" : provider === 'anthropic' ? "claude-3-5-sonnet-20240620" : "gemini-1.5-pro");
     const temperature = options.config?.temperature ?? parseFloat(process.env.TEMPERATURE || "0");
-    const apiKey = options.config?.apiKey || (provider === 'openai' ? process.env.OPENAI_API_KEY : provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.GOOGLE_API_KEY) || "";
+    const apiKey = options.config?.apiKey || (provider === 'openai' ? process.env.OPENAI_API_KEY : provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : provider === 'gemini' ? process.env.GOOGLE_API_KEY : "") || "";
 
-    if (!apiKey && !options.config?.baseUrl) {
+    if (!apiKey) {
         // Fallback for demo/default if no key provided
-        if (process.env.GROQ_API_KEY) {
+        if (process.env.GROQ_API_KEY && provider === 'openai') {
             return new ChatOpenAI({
                 modelName: options.config?.modelName || "llama-3.1-70b-versatile",
                 temperature,
-                openAIApiKey: process.env.GROQ_API_KEY,
+                apiKey: process.env.GROQ_API_KEY,
                 configuration: { baseURL: "https://api.groq.com/openai/v1" },
                 ...(options.jsonMode ? { modelKwargs: { response_format: { type: "json_object" } } } : {})
             });
         }
-        throw new Error(`API Key for ${provider} is missing.`);
+        throw new Error(`API Key for ${provider} is missing. Please provide it in the UI and click 'Save', or set it in your .env file.`);
     }
 
     if (provider === 'anthropic') {
@@ -58,7 +58,7 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
     return new ChatOpenAI({
         modelName,
         temperature,
-        openAIApiKey: apiKey,
+        apiKey: apiKey,
         configuration: {
             baseURL: baseUrl,
             defaultHeaders: {
