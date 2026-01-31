@@ -54,7 +54,7 @@ The UI will be available at `http://localhost:5173`.
   - For **PostgreSQL/MySQL**: Enter Host, Port, User, Password, and Database name.
   - For **SQLite**: Simply provide the local file path to your `.sqlite` or `.db` file.
 - **LLM Provider**: Enter your Base URL, API Key, and Model ID.
-- Click **Save** on each section to persist the settings.
+  - **Note**: The agent supports any **OpenAI-compatible API** (e.g., Groq, OpenRouter, Mistral, Ollama).
 
 ### 3. Ask Questions
 Type your query in the prompt input and click **Send**. The agent will visualize its reasoning and return the results in a table or JSON format.

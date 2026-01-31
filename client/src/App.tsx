@@ -9,6 +9,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import clsx from 'clsx'
 
 interface LLMConfig {
+  provider: 'openai' | 'anthropic' | 'gemini';
   apiKey: string;
   baseUrl: string;
   modelName: string;
@@ -45,6 +46,7 @@ export default function App() {
       dbPass: '',
       sqlitePath: './database.sqlite',
       llmConfig: {
+        provider: 'openai',
         apiKey: '',
         baseUrl: 'https://api.groq.com/openai/v1',
         modelName: 'llama-3.1-70b-versatile'
@@ -325,17 +327,36 @@ export default function App() {
             </div>
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Base URL</label>
-                <input
-                  type="text"
-                  value={stagedConfig.llmConfig.baseUrl}
+                <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Provider</label>
+                <select
+                  value={stagedConfig.llmConfig.provider}
                   onChange={(e) => setStagedConfig({
                     ...stagedConfig,
-                    llmConfig: { ...stagedConfig.llmConfig, baseUrl: e.target.value }
+                    llmConfig: { ...stagedConfig.llmConfig, provider: e.target.value as any }
                   })}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all"
-                />
+                  className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all cursor-pointer"
+                >
+                  <option value="openai" className="bg-slate-950 text-white">OpenAI (Compatible)</option>
+                  <option value="anthropic" className="bg-slate-950 text-white">Anthropic (Claude)</option>
+                  <option value="gemini" className="bg-slate-950 text-white">Gemini (Google)</option>
+                </select>
               </div>
+
+              {stagedConfig.llmConfig.provider === 'openai' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Base URL</label>
+                  <input
+                    type="text"
+                    value={stagedConfig.llmConfig.baseUrl}
+                    onChange={(e) => setStagedConfig({
+                      ...stagedConfig,
+                      llmConfig: { ...stagedConfig.llmConfig, baseUrl: e.target.value }
+                    })}
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all"
+                    placeholder="https://api.groq.com/openai/v1"
+                  />
+                </div>
+              )}
               <div className="space-y-1">
                 <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">API Key</label>
                 <input
