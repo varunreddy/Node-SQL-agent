@@ -25,13 +25,17 @@ export default defineConfig({
     },
   },
   build: {
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
     rollupOptions: {
-      // Prevent externalizing node builtins that we are shadowing
-      external: [],
+      output: {
+        manualChunks: undefined,
+      },
     },
   },
-  define: {
-    // Stub out global if needed (nodePolyfills handle most of this)
+  optimizeDeps: {
+    include: ['@langchain/langgraph', '@langchain/core'],
   },
   server: {
     proxy: {
