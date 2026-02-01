@@ -276,6 +276,9 @@ export async function databaseDecider(state: DatabaseSubState): Promise<Partial<
         return { tool: s.tool_name, params: s.tool_parameters, status: s.status, result: resultPreview };
     });
 
+    // OPTIMIZATION: Sliding Window for Decider Context
+    // Only show the last 3 steps to avoid context explosion / rate limits.
+    // We need slightly more context to understand patterns and self-correct.
     const recentHistory = history.slice(-3);
     const dbType = state.config?.dbType || 'postgres';
     const llm = getLLM({ jsonMode: true, config: state.config?.llmConfig });
@@ -344,12 +347,17 @@ export async function scopeReflectorNode(state: DatabaseSubState): Promise<Parti
     const currentStep = state.current_step;
     if (!currentStep) return {};
 
+    // OPTIMIZATION: Sliding Window for Scope Reflection
+    // Only show the last 3 steps to avoid context explosion and reduce token usage.
+    // We need slightly more context to understand patterns and self-correct.
+    const recentHistory = state.completed_steps.slice(-3);
+
     const assessment = await reflectOnQuery(
         currentStep.tool_name,
         currentStep.tool_parameters,
         state.messages[0].content as string,
         state.planner_output,
-        state.completed_steps.slice(-3),
+        recentHistory,
         state.config
     );
 
@@ -362,6 +370,27 @@ export async function scopeReflectorNode(state: DatabaseSubState): Promise<Parti
 export async function policyNode(state: DatabaseSubState): Promise<Partial<DatabaseSubState>> {
     const currentStep = state.current_step;
     if (!currentStep) return {};
+
+    // --- Confidence Threshold Filter ---
+    // Only execute steps with confidence > 0.95 unless explicitly overridden
+    const assessment = currentStep.scope_assessment;
+    const CONFIDENCE_THRESHOLD = 0.95;
+    
+    if (assessment && assessment.confidence_score <= CONFIDENCE_THRESHOLD) {
+        // Low confidence - require refinement before execution
+        logger.warn(`[CONFIDENCE CHECK] Step confidence ${assessment.confidence_score} <= ${CONFIDENCE_THRESHOLD} - Requesting refinement.`);
+        return {
+            current_step: {
+                ...currentStep,
+                status: "denied",
+                policy_decision: { 
+                    approved: false, 
+                    reason: `Confidence score ${assessment.confidence_score.toFixed(2)} is below ${CONFIDENCE_THRESHOLD} threshold. Issues: ${(assessment.performance_issues || []).join(', ') || 'See assessment'}. Please refine.`
+                }
+            } as DatabaseStep,
+            execution_log: [...state.execution_log, `[CONFIDENCE FILTER] Rejected due to low confidence (${assessment.confidence_score.toFixed(2)})`]
+        };
+    }
 
     const validator = new PolicyValidator();
     const decision = validator.validateAction(
