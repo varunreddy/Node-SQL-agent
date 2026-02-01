@@ -15,6 +15,7 @@ export interface LLMConfig {
     baseUrl?: string;
     modelName?: string;
     temperature?: number;
+    maxTokens?: number;
 }
 
 export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {}): BaseChatModel {
@@ -29,6 +30,7 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
             return new ChatOpenAI({
                 modelName: options.config?.modelName || "llama-3.1-70b-versatile",
                 temperature,
+                maxTokens: options.config?.maxTokens,
                 apiKey: getEnv("GROQ_API_KEY"),
                 configuration: { baseURL: "https://api.groq.com/openai/v1" },
                 ...(options.jsonMode ? { modelKwargs: { response_format: { type: "json_object" } } } : {})
@@ -41,6 +43,7 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
         return new ChatAnthropic({
             modelName,
             temperature,
+            maxTokens: options.config?.maxTokens,
             anthropicApiKey: apiKey,
             ...(options.jsonMode ? { modelOptions: { response_format: { type: "json_object" } } } : {}) // Note: LangChain Anthropic handle this differently sometimes
         });
@@ -50,6 +53,7 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
         return new ChatGoogleGenerativeAI({
             model: modelName,
             temperature,
+            maxOutputTokens: options.config?.maxTokens,
             apiKey,
             ...(options.jsonMode ? { responseMimeType: "application/json" } : {})
         });
@@ -60,6 +64,7 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
     return new ChatOpenAI({
         modelName,
         temperature,
+        maxTokens: options.config?.maxTokens,
         apiKey: apiKey,
         configuration: {
             baseURL: baseUrl,

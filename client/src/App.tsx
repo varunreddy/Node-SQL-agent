@@ -15,6 +15,8 @@ interface LLMConfig {
   apiKey: string;
   baseUrl: string;
   modelName: string;
+  maxTokens: number;
+  temperature: number;
 }
 
 interface Config {
@@ -45,7 +47,9 @@ export default function App() {
         provider: 'openai',
         apiKey: '',
         baseUrl: 'https://api.groq.com/openai/v1',
-        modelName: 'llama-3.1-70b-versatile'
+        modelName: 'llama-3.1-70b-versatile',
+        maxTokens: 2048,
+        temperature: 0.1
       }
     };
   });
@@ -60,6 +64,7 @@ export default function App() {
   const [results, setResults] = useState<any>(null);
   const [currentThought, setCurrentThought] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<'database' | 'llm'>('database');
 
   const handleSaveDb = () => {
     setDbSaveStatus('saving');
@@ -193,196 +198,255 @@ export default function App() {
           {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
 
-        <div className={clsx("flex items-center space-x-3 mb-8 transition-opacity", !isSidebarOpen && "opacity-0 invisible")}>
-          <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-lg shadow-lg shadow-primary/20">
-            <Database className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight vibrant-text">SQL Agent</h1>
-        </div>
-
-        {!isSidebarOpen && (
-          <div className="flex flex-col items-center space-y-6 mt-10 text-muted-foreground">
-            <Server className="w-6 h-6 hover:text-primary transition-colors cursor-pointer" onClick={() => setIsSidebarOpen(true)} />
-            <Globe className="w-6 h-6 hover:text-accent transition-colors cursor-pointer" onClick={() => setIsSidebarOpen(true)} />
-          </div>
-        )}
-
-        <div className={clsx("space-y-6 overflow-y-auto pr-2 custom-scrollbar pb-10", !isSidebarOpen && "hidden")}>
-          <section className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-500">
-            <div className="flex items-center justify-between text-primary pr-2">
-              <div className="flex items-center space-x-2">
-                <Server className="w-4 h-4" />
-                <h2 className="text-xs font-bold uppercase tracking-widest text-primary/80">Database Setup</h2>
+        <div className={clsx("flex flex-col flex-1 transition-all duration-300", !isSidebarOpen && "items-center")}>
+          <div className={clsx("flex flex-col space-y-4 mb-8", !isSidebarOpen && "hidden")}>
+            <div className="flex items-center space-x-2">
+              <div className="p-1.5 bg-primary/10 rounded-lg">
+                <Terminal className="w-4 h-4 text-primary" />
               </div>
+              <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Configuration</span>
+            </div>
+            <div className="flex bg-slate-950/50 p-1 rounded-xl border border-border/50">
               <button
-                onClick={handleSaveDb}
+                onClick={() => setSidebarTab('database')}
                 className={clsx(
-                  "p-1.5 rounded-md transition-all flex items-center space-x-1 outline-none",
-                  dbSaveStatus === 'saved' ? "bg-emerald-500/20 text-emerald-500" : "bg-primary/10 text-primary hover:bg-primary/20"
+                  "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all",
+                  sidebarTab === 'database' ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {dbSaveStatus === 'saving' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : dbSaveStatus === 'saved' ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-                <span className="text-[10px] font-bold uppercase">{dbSaveStatus === 'saved' ? 'Saved' : 'Save'}</span>
+                Database
+              </button>
+              <button
+                onClick={() => setSidebarTab('llm')}
+                className={clsx(
+                  "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all",
+                  sidebarTab === 'llm' ? "bg-accent text-white shadow-lg" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                LLM Setup
               </button>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Engine</label>
-                <select
-                  value={stagedConfig.dbType}
-                  onChange={(e) => setStagedConfig({ ...stagedConfig, dbType: e.target.value as any })}
-                  className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer"
-                >
-                  <option value="postgres" className="bg-slate-950 text-white">PostgreSQL</option>
-                  <option value="mysql" className="bg-slate-950 text-white">MySQL</option>
-                  <option value="sqlite" className="bg-slate-950 text-white">SQLite</option>
-                </select>
-              </div>
+          {!isSidebarOpen && (
+            <div className="flex flex-col items-center space-y-8 mt-4 text-muted-foreground">
+              <Server
+                className={clsx("w-5 h-5 transition-colors cursor-pointer", sidebarTab === 'database' ? "text-primary" : "hover:text-primary")}
+                onClick={() => { setIsSidebarOpen(true); setSidebarTab('database'); }}
+              />
+              <Globe
+                className={clsx("w-5 h-5 transition-colors cursor-pointer", sidebarTab === 'llm' ? "text-accent" : "hover:text-accent")}
+                onClick={() => { setIsSidebarOpen(true); setSidebarTab('llm'); }}
+              />
+            </div>
+          )}
 
-              {stagedConfig.dbType === 'sqlite' ? (
-                <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><FileCode className="w-3 h-3 mr-1" /> DB Path</label>
-                  <input
-                    type="text"
-                    value={stagedConfig.sqlitePath}
-                    onChange={(e) => setStagedConfig({ ...stagedConfig, sqlitePath: e.target.value })}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
-                    placeholder="./database.sqlite"
-                  />
+          {sidebarTab === 'database' ? (
+            <section className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-500">
+              <div className="flex items-center justify-between text-primary pr-2">
+                <div className="flex items-center space-x-2">
+                  <Server className="w-4 h-4" />
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-primary/80">Connection</h2>
                 </div>
-              ) : (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Globe className="w-3 h-3 mr-1" /> Host</label>
-                    <input
-                      type="text"
-                      value={stagedConfig.dbHost}
-                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbHost: e.target.value })}
-                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
-                      placeholder="localhost"
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="space-y-1 col-span-1">
-                      <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Port</label>
-                      <input
-                        type="text"
-                        value={stagedConfig.dbPort}
-                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbPort: e.target.value })}
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
-                      />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Database className="w-3 h-3 mr-1" /> Database</label>
-                      <input
-                        type="text"
-                        value={stagedConfig.dbName}
-                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbName: e.target.value })}
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
-                        placeholder="postgres"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><User className="w-3 h-3 mr-1" /> Username</label>
-                    <input
-                      type="text"
-                      value={stagedConfig.dbUser}
-                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbUser: e.target.value })}
-                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Lock className="w-3 h-3 mr-1" /> Password</label>
-                    <input
-                      type="password"
-                      value={stagedConfig.dbPass}
-                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbPass: e.target.value })}
-                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-
-          <section className="space-y-4 pt-2 animate-in fade-in slide-in-from-left-4 duration-500 delay-150">
-            <div className="flex items-center justify-between text-accent pr-2">
-              <div className="flex items-center space-x-2">
-                <Globe className="w-4 h-4" />
-                <h2 className="text-xs font-bold uppercase tracking-widest">LLM Provider</h2>
-              </div>
-              <button
-                onClick={handleSaveLlm}
-                className={clsx(
-                  "p-1.5 rounded-md transition-all flex items-center space-x-1 outline-none",
-                  llmSaveStatus === 'saved' ? "bg-emerald-500/20 text-emerald-500" : "bg-accent/10 text-accent hover:bg-accent/20"
-                )}
-              >
-                {llmSaveStatus === 'saving' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : llmSaveStatus === 'saved' ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-                <span className="text-[10px] font-bold uppercase">{llmSaveStatus === 'saved' ? 'Saved' : 'Save'}</span>
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Provider</label>
-                <select
-                  value={stagedConfig.llmConfig.provider}
-                  onChange={(e) => setStagedConfig({
-                    ...stagedConfig,
-                    llmConfig: { ...stagedConfig.llmConfig, provider: e.target.value as any }
-                  })}
-                  className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all cursor-pointer"
+                <button
+                  onClick={handleSaveDb}
+                  className={clsx(
+                    "p-1.5 rounded-md transition-all flex items-center space-x-1 outline-none",
+                    dbSaveStatus === 'saved' ? "bg-emerald-500/20 text-emerald-500" : "bg-primary/10 text-primary hover:bg-primary/20"
+                  )}
                 >
-                  <option value="openai" className="bg-slate-950 text-white">OpenAI (Compatible)</option>
-                  <option value="anthropic" className="bg-slate-950 text-white">Anthropic (Claude)</option>
-                  <option value="gemini" className="bg-slate-950 text-white">Gemini (Google)</option>
-                </select>
+                  {dbSaveStatus === 'saving' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : dbSaveStatus === 'saved' ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                  <span className="text-[10px] font-bold uppercase">{dbSaveStatus === 'saved' ? 'Saved' : 'Save'}</span>
+                </button>
               </div>
 
-              {stagedConfig.llmConfig.provider === 'openai' && (
+              <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Base URL</label>
-                  <input
-                    type="text"
-                    value={stagedConfig.llmConfig.baseUrl}
+                  <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Engine</label>
+                  <select
+                    value={stagedConfig.dbType}
+                    onChange={(e) => setStagedConfig({ ...stagedConfig, dbType: e.target.value as any })}
+                    className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer"
+                  >
+                    <option value="postgres" className="bg-slate-950 text-white">PostgreSQL</option>
+                    <option value="mysql" className="bg-slate-950 text-white">MySQL</option>
+                    <option value="sqlite" className="bg-slate-950 text-white">SQLite</option>
+                  </select>
+                </div>
+
+                {stagedConfig.dbType === 'sqlite' ? (
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><FileCode className="w-3 h-3 mr-1" /> DB Path</label>
+                    <input
+                      type="text"
+                      value={stagedConfig.sqlitePath}
+                      onChange={(e) => setStagedConfig({ ...stagedConfig, sqlitePath: e.target.value })}
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
+                      placeholder="./database.sqlite"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Globe className="w-3 h-3 mr-1" /> Host</label>
+                      <input
+                        type="text"
+                        value={stagedConfig.dbHost}
+                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbHost: e.target.value })}
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                        placeholder="localhost"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1 col-span-1">
+                        <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Port</label>
+                        <input
+                          type="text"
+                          value={stagedConfig.dbPort}
+                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbPort: e.target.value })}
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1 col-span-2">
+                        <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Database className="w-3 h-3 mr-1" /> Database</label>
+                        <input
+                          type="text"
+                          value={stagedConfig.dbName}
+                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbName: e.target.value })}
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
+                          placeholder="postgres"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><User className="w-3 h-3 mr-1" /> Username</label>
+                      <input
+                        type="text"
+                        value={stagedConfig.dbUser}
+                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbUser: e.target.value })}
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Lock className="w-3 h-3 mr-1" /> Password</label>
+                      <input
+                        type="password"
+                        value={stagedConfig.dbPass}
+                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbPass: e.target.value })}
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </section>
+          ) : (
+            <section className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-500">
+              <div className="flex items-center justify-between text-accent pr-2">
+                <div className="flex items-center space-x-2">
+                  <Globe className="w-4 h-4" />
+                  <h2 className="text-xs font-bold uppercase tracking-widest">Model Settings</h2>
+                </div>
+                <button
+                  onClick={handleSaveLlm}
+                  className={clsx(
+                    "p-1.5 rounded-md transition-all flex items-center space-x-1 outline-none",
+                    llmSaveStatus === 'saved' ? "bg-emerald-500/20 text-emerald-500" : "bg-accent/10 text-accent hover:bg-accent/20"
+                  )}
+                >
+                  {llmSaveStatus === 'saving' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : llmSaveStatus === 'saved' ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                  <span className="text-[10px] font-bold uppercase">{llmSaveStatus === 'saved' ? 'Saved' : 'Save'}</span>
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Provider</label>
+                  <select
+                    value={stagedConfig.llmConfig.provider}
                     onChange={(e) => setStagedConfig({
                       ...stagedConfig,
-                      llmConfig: { ...stagedConfig.llmConfig, baseUrl: e.target.value }
+                      llmConfig: { ...stagedConfig.llmConfig, provider: e.target.value as any }
+                    })}
+                    className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all cursor-pointer"
+                  >
+                    <option value="openai" className="bg-slate-950 text-white">OpenAI (Compatible)</option>
+                    <option value="anthropic" className="bg-slate-950 text-white">Anthropic (Claude)</option>
+                    <option value="gemini" className="bg-slate-950 text-white">Gemini (Google)</option>
+                  </select>
+                </div>
+
+                {stagedConfig.llmConfig.provider === 'openai' && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Base URL</label>
+                    <input
+                      type="text"
+                      value={stagedConfig.llmConfig.baseUrl}
+                      onChange={(e) => setStagedConfig({
+                        ...stagedConfig,
+                        llmConfig: { ...stagedConfig.llmConfig, baseUrl: e.target.value }
+                      })}
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all"
+                      placeholder="https://api.groq.com/openai/v1"
+                    />
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">API Key</label>
+                  <input
+                    type="password"
+                    value={stagedConfig.llmConfig.apiKey}
+                    onChange={(e) => setStagedConfig({
+                      ...stagedConfig,
+                      llmConfig: { ...stagedConfig.llmConfig, apiKey: e.target.value }
                     })}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all"
-                    placeholder="https://api.groq.com/openai/v1"
+                    placeholder="sk-..."
                   />
                 </div>
-              )}
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">API Key</label>
-                <input
-                  type="password"
-                  value={stagedConfig.llmConfig.apiKey}
-                  onChange={(e) => setStagedConfig({
-                    ...stagedConfig,
-                    llmConfig: { ...stagedConfig.llmConfig, apiKey: e.target.value }
-                  })}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all"
-                  placeholder="sk-..."
-                />
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Model Name</label>
+                  <input
+                    type="text"
+                    value={stagedConfig.llmConfig.modelName}
+                    onChange={(e) => setStagedConfig({
+                      ...stagedConfig,
+                      llmConfig: { ...stagedConfig.llmConfig, modelName: e.target.value }
+                    })}
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all font-mono"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Max Tokens</label>
+                    <input
+                      type="number"
+                      value={stagedConfig.llmConfig.maxTokens}
+                      onChange={(e) => setStagedConfig({
+                        ...stagedConfig,
+                        llmConfig: { ...stagedConfig.llmConfig, maxTokens: parseInt(e.target.value) }
+                      })}
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Temp</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="1"
+                      value={stagedConfig.llmConfig.temperature}
+                      onChange={(e) => setStagedConfig({
+                        ...stagedConfig,
+                        llmConfig: { ...stagedConfig.llmConfig, temperature: parseFloat(e.target.value) }
+                      })}
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all font-mono"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Model Name</label>
-                <input
-                  type="text"
-                  value={stagedConfig.llmConfig.modelName}
-                  onChange={(e) => setStagedConfig({
-                    ...stagedConfig,
-                    llmConfig: { ...stagedConfig.llmConfig, modelName: e.target.value }
-                  })}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all font-mono"
-                />
-              </div>
-            </div>
-          </section>
+            </section>
+          )}
         </div>
 
         <div className={clsx("mt-auto pt-6 border-t border-border/50 transition-opacity", !isSidebarOpen && "opacity-0 invisible")}>
@@ -410,12 +474,12 @@ export default function App() {
         {/* Column 1: Prompt & Results */}
         <div className="w-full md:w-2/5 flex flex-col border-b md:border-b-0 md:border-r border-border/50 bg-black/10 backdrop-blur-sm z-10 overflow-hidden h-[60%] md:h-full">
           {/* Top: Prompt */}
-          <div className="h-1/2 p-4 md:p-8 flex flex-col space-y-4 border-b border-border/50 overflow-hidden">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
-                <Terminal className="w-4 h-4 text-primary" />
+          <div className="p-4 md:p-8 flex flex-col space-y-4 border-b border-border/50 overflow-hidden">
+            <div className="flex items-center space-x-3 mb-2">
+              <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl shadow-lg shadow-primary/20">
+                <Database className="w-5 h-5 text-white" />
               </div>
-              <span className="text-sm font-bold tracking-tight uppercase border-b-2 border-primary/50 pb-0.5">Prompt</span>
+              <h1 className="text-xl font-bold tracking-tight vibrant-text italic">SQL Agent</h1>
             </div>
             <div className="flex-1 flex flex-col relative group">
               <textarea
@@ -491,23 +555,28 @@ export default function App() {
 
         {/* Column 2: SQL Reasoning & Workspace */}
         <div className="flex-1 flex flex-col bg-transparent relative overflow-hidden z-10 h-[40%] md:h-full">
-          <div className="px-4 md:px-8 py-3 md:py-4 border-b border-border/50 flex items-center justify-start space-x-4 md:space-x-6 bg-black/20">
-            <div className="flex items-center space-x-3 shrink-0">
-              {status === 'thinking' ? (
-                <Loader2 className="w-4 h-4 text-primary animate-spin" />
-              ) : status === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              ) : (
-                <Terminal className="w-4 h-4 text-muted-foreground" />
-              )}
-              <span className={clsx(
-                "text-xs font-bold tracking-widest uppercase",
-                status === 'thinking' ? "text-primary italic" : status === 'success' ? "text-emerald-500" : "text-muted-foreground"
-              )}>
-                Agent Reasoning & SQL
-              </span>
+          <div className="px-4 md:px-8 py-3 md:py-4 border-b border-border/50 bg-black/20">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-3">
+                {status === 'thinking' ? (
+                  <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                ) : status === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                ) : (
+                  <Terminal className="w-4 h-4 text-muted-foreground" />
+                )}
+                <span className={clsx(
+                  "text-xs font-bold tracking-widest uppercase",
+                  status === 'thinking' ? "text-primary italic" : status === 'success' ? "text-emerald-500" : "text-muted-foreground"
+                )}>
+                  Agent Reasoning
+                </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground font-mono">
+                {status === 'thinking' ? 'Processing...' : 'System Ready'}
+              </div>
             </div>
-            <div className="text-[10px] md:text-[11px] text-primary/80 font-mono font-bold truncate max-w-[150px] md:max-w-[500px] px-3 py-1 bg-primary/10 rounded-full border border-primary/20 shrink min-w-0">
+            <div className="w-full text-[11px] md:text-[12px] text-primary/90 font-mono font-bold px-4 py-2 bg-primary/5 rounded-xl border border-primary/10 shadow-inner">
               {currentThought || "Awaiting instructions..."}
             </div>
           </div>
