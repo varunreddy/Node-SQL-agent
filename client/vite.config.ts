@@ -17,25 +17,21 @@ export default defineConfig({
         process: true,
       },
     }),
+    {
+      name: 'force-async-hooks-mock',
+      enforce: 'pre',
+      resolveId(id) {
+        if (id === 'node:async_hooks' || id === 'async_hooks') {
+          return path.resolve(__dirname, 'src/async_hooks_mock.ts')
+        }
+      }
+    }
   ],
   resolve: {
     alias: {
       "node:async_hooks": path.resolve(__dirname, 'src/async_hooks_mock.ts'),
       "async_hooks": path.resolve(__dirname, 'src/async_hooks_mock.ts'),
     },
-  },
-  build: {
-    commonjsOptions: {
-      transformMixedEsModules: true,
-    },
-    rollupOptions: {
-      output: {
-        manualChunks: undefined,
-      },
-    },
-  },
-  optimizeDeps: {
-    include: ['@langchain/langgraph', '@langchain/core'],
   },
   server: {
     proxy: {
