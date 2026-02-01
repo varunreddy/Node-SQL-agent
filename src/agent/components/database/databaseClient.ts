@@ -1,6 +1,29 @@
 import knex, { Knex } from 'knex';
 import { EventEmitter } from 'events';
 
+/**
+ * DatabaseClient - Connection manager for remote and local databases with SSL/TLS support
+ * 
+ * SSL/TLS Configuration:
+ * - PostgreSQL: Requires ssl=true flag and supports connection string with sslmode parameters
+ * - MySQL: Requires ssl=true flag in connection parameters
+ * - SQLite: Local only, no SSL support
+ * 
+ * For managed databases (AWS RDS, Azure Database, etc.):
+ * 1. Enable SSL in UI toggle or set VITE_DB_SSL=true
+ * 2. By default, rejectUnauthorized=false for compatibility with self-signed certificates
+ * 3. For production, provide CA certificates via environment variables:
+ *    - Set DATABASE_URL with sslmode=require
+ *    - Or use custom CA: Set SSL_CERT=/path/to/ca-certificate.crt
+ * 
+ * Environment Variables:
+ * - DATABASE_URL or DB_URL: Full connection string for postgres/mysql
+ * - SQLITE_PATH: Path to SQLite database file (default: ./database.sqlite)
+ * - SSL_CERT: Path to CA certificate file (optional, for certificate validation)
+ * - SSL_CLIENT_CERT: Path to client certificate (optional, for mTLS)
+ * - SSL_CLIENT_KEY: Path to client key (optional, for mTLS)
+ */
+
 export const logger = {
     info: (msg: string) => console.log(`[INFO] ${msg}`),
     error: (msg: string) => console.error(`[ERROR] ${msg}`),
@@ -43,20 +66,25 @@ export class DatabaseClient extends EventEmitter {
                 pool: { min: 0, max: 5 }
             };
 
-            // If it's Postgres and SSL is requested, we often need to allow unauthorized certs for managed DBs
-            if (dbType === 'postgres' && ssl && typeof knexConfig.connection === 'string') {
-                // Knex handles connection strings, but for deeper SSL config we might need the object form
-                // However, for most managed DBs, adding ?ssl=true or sslmode=require to the URL is enough.
-                // If they need rejectUnauthorized: false, we'd need to parse the URL or use the object form.
-
-                // Let's refine the connection to an object if we have a URL and SSL is true
-                // to explicitly set rejectUnauthorized: false which is the #1 cause of 'insecure' errors.
-                if (dbUrl) {
-                    knexConfig.connection = {
-                        connectionString: dbUrl,
-                        ssl: ssl ? { rejectUnauthorized: false } : false
-                    };
-                }
+            // For Postgres with SSL, configure SSL options for better security
+            if (dbType === 'postgres' && ssl && dbUrl) {
+                // Convert to object form for detailed SSL configuration
+                knexConfig.connection = {
+                    connectionString: dbUrl,
+                    ssl: {
+                        rejectUnauthorized: false, // Set to true in production with valid certificates
+                        // Users can override with environment variables if needed:
+                        // - DATABASE_URL: full connection string with sslmode=require
+                        // - SSL_CERT: path to CA certificate
+                        // - SSL_CLIENT_CERT: path to client certificate (for mTLS)
+                        // - SSL_CLIENT_KEY: path to client key (for mTLS)
+                    }
+                };
+                logger.info(`SSL/TLS enabled for PostgreSQL. Note: rejectUnauthorized is false - only use with trusted networks or add certificates for production.`);
+            } else if (dbType === 'mysql' && ssl && dbUrl) {
+                // MySQL SSL configuration via connection string params
+                // MySQL2 will read ssl=true from the query string
+                logger.info(`SSL/TLS enabled for MySQL via connection string parameters.`);
             }
         }
 

@@ -53,6 +53,7 @@ export interface AgentConfig {
     dbType?: 'postgres' | 'mysql' | 'sqlite';
     dbUrl?: string; // used for pg/mysql connection string
     sqlitePath?: string; // used for sqlite
+    ssl?: boolean; // enable SSL/TLS for remote connections
     llmConfig?: LLMConfig;
 }
 

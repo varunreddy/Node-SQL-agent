@@ -27,6 +27,7 @@ interface DBConfig {
   user: string;
   pass: string;
   sqlitePath: string;
+  ssl?: boolean;
 }
 
 interface Config {
@@ -44,6 +45,7 @@ const DEFAULT_CONFIG: Config = {
     user: '',
     pass: '',
     sqlitePath: './database.sqlite',
+    ssl: false,
   },
   llmConfig: {
     provider: 'openai',
@@ -74,6 +76,7 @@ export default function App() {
                 user: parsed.dbUser || DEFAULT_CONFIG.dbConfig.user,
                 pass: parsed.dbPass || DEFAULT_CONFIG.dbConfig.pass,
                 sqlitePath: parsed.sqlitePath || DEFAULT_CONFIG.dbConfig.sqlitePath,
+                ssl: parsed.dbSsl !== undefined ? parsed.dbSsl : DEFAULT_CONFIG.dbConfig.ssl,
               },
               llmConfig: {
                 ...DEFAULT_CONFIG.llmConfig,
@@ -106,6 +109,7 @@ export default function App() {
       user: import.meta.env.VITE_PSQL_USER || initialStagedConfig.dbConfig.user,
       pass: import.meta.env.VITE_PSQL_PASSWORD || initialStagedConfig.dbConfig.pass,
       sqlitePath: import.meta.env.VITE_SQLITE_PATH || initialStagedConfig.dbConfig.sqlitePath,
+      ssl: import.meta.env.VITE_DB_SSL === 'true' || initialStagedConfig.dbConfig.ssl,
     };
 
     // Override LLM config with VITE_ env vars
@@ -187,7 +191,8 @@ export default function App() {
         ...stagedConfig,
         dbType: stagedConfig.dbConfig.dbType, // For backward compatibility with agent's expected config
         dbUrl,
-        sqlitePath: stagedConfig.dbConfig.sqlitePath // For backward compatibility
+        sqlitePath: stagedConfig.dbConfig.sqlitePath, // For backward compatibility
+        ssl: stagedConfig.dbConfig.ssl // Include SSL flag
       };
 
       const graph = buildDatabaseGraph();
@@ -407,6 +412,18 @@ export default function App() {
                           onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, pass: e.target.value } })}
                           className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
                         />
+                      </div>
+                      <div className="flex items-center space-x-3 pt-2">
+                        <input
+                          type="checkbox"
+                          id="ssl-toggle"
+                          checked={stagedConfig.dbConfig.ssl ?? false}
+                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, ssl: e.target.checked } })}
+                          className="w-4 h-4 rounded cursor-pointer accent-primary bg-slate-950/50 border border-border/50"
+                        />
+                        <label htmlFor="ssl-toggle" className="text-[10px] text-muted-foreground uppercase font-medium cursor-pointer flex items-center">
+                          <Lock className="w-3 h-3 mr-1" /> Enable SSL/TLS
+                        </label>
                       </div>
                     </>
                   )}

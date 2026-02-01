@@ -20,7 +20,8 @@ app.post('/api/execute-sql', async (req, res) => {
         const client = DatabaseClient.getInstance({
             dbType: config?.dbType || 'postgres',
             dbUrl: config?.dbUrl,
-            sqlitePath: config?.sqlitePath
+            sqlitePath: config?.sqlitePath,
+            ssl: config?.ssl || false
         });
         const result = await client.executeQuery(query);
         res.json(result);
@@ -35,7 +36,8 @@ app.post('/api/get-schema', async (req, res) => {
         const client = DatabaseClient.getInstance({
             dbType: config?.dbType || 'postgres',
             dbUrl: config?.dbUrl,
-            sqlitePath: config?.sqlitePath
+            sqlitePath: config?.sqlitePath,
+            ssl: config?.ssl || false
         });
         await client.connect();
         const schema = client.getSchema();
