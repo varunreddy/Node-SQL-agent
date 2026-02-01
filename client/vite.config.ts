@@ -31,11 +31,24 @@ export default defineConfig({
               exit(callback) { return callback(); }
               enterWith(_store) {}
             }
+            export class AsyncResource {
+              constructor(type, triggerAsyncId) {}
+              runInAsyncScope(fn, thisArg, ...args) { return fn.apply(thisArg, args); }
+              emitDestroy() {}
+              asyncId() { return 0; }
+              triggerAsyncId() { return 0; }
+            }
+            export function executionAsyncId() { return 0; }
+            export function triggerAsyncId() { return 0; }
           `
         }
       }
     }
   ],
+  define: {
+    'process.env': {},
+    'global': 'globalThis',
+  },
   server: {
     proxy: {
       '/api': {

@@ -32,26 +32,38 @@ interface Config {
 
 
 
+const DEFAULT_CONFIG: Config = {
+  dbType: 'postgres',
+  dbHost: '',
+  dbPort: '5432',
+  dbName: '',
+  dbUser: '',
+  dbPass: '',
+  sqlitePath: './database.sqlite',
+  llmConfig: {
+    provider: 'openai',
+    apiKey: '',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    modelName: 'llama-3.1-70b-versatile',
+    maxTokens: 2048,
+    temperature: 0.1
+  }
+};
+
 export default function App() {
   const [activeConfig, setActiveConfig] = useState<Config>(() => {
-    const saved = localStorage.getItem('sql-agent-config-v3');
-    return saved ? JSON.parse(saved) : {
-      dbType: 'postgres',
-      dbHost: '',
-      dbPort: '5432',
-      dbName: '',
-      dbUser: '',
-      dbPass: '',
-      sqlitePath: './database.sqlite',
-      llmConfig: {
-        provider: 'openai',
-        apiKey: '',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        modelName: 'llama-3.1-70b-versatile',
-        maxTokens: 2048,
-        temperature: 0.1
+    try {
+      const saved = localStorage.getItem('sql-agent-config-v3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && parsed.llmConfig) {
+          return parsed;
+        }
       }
-    };
+    } catch (e) {
+      console.error("Config load error:", e);
+    }
+    return DEFAULT_CONFIG;
   });
 
   const [stagedConfig, setStagedConfig] = useState<Config>(activeConfig);
