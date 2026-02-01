@@ -287,14 +287,15 @@ export async function databaseDecider(state: DatabaseSubState): Promise<Partial<
     let refinementContext = "";
     if (messages.length > 1) {
         const latestMsg = messages[messages.length - 1];
-        if (latestMsg.content && latestMsg.content.includes("[SCOPE REFLECTION FEEDBACK")) {
+        const msgContent = typeof latestMsg.content === 'string' ? latestMsg.content : '';
+        if (msgContent && msgContent.includes("[SCOPE REFLECTION FEEDBACK")) {
             refinementContext = `
     === AUTOMATIC REPLANNING TRIGGERED ===
     
     Your previous SQL query was REJECTED due to low confidence.
     The Scope Reflector has provided specific ISSUES and SUGGESTIONS:
     
-    ${latestMsg.content}
+    ${msgContent}
     
     YOU MUST REFACTOR THE QUERY TO ADDRESS THESE ISSUES.
     Do NOT submit the same query again. It will be rejected again.
@@ -426,6 +427,7 @@ Rewrite the query, then it will be re-assessed.
         logger.warn(`Refinement Feedback:\n${refinementMessage}`);
         
         const { HumanMessage } = require("@langchain/core/messages");
+        const refinementMsg = new HumanMessage({ content: refinementMessage });
         
         return {
             current_step: {
@@ -436,10 +438,10 @@ Rewrite the query, then it will be re-assessed.
                     reason: `Confidence score ${assessment.confidence_score.toFixed(2)} is below ${CONFIDENCE_THRESHOLD} threshold. Triggering replanning.`,
                     refinement_feedback: refinementMessage,
                     issues: assessment.performance_issues,
-                    suggestions: assessment.optimization_suggestions
+                    suggestions: assessment.optimization_suggestions || []
                 }
             } as DatabaseStep,
-            messages: [...state.messages, new HumanMessage(refinementMessage)],
+            messages: [...state.messages, refinementMsg],
             execution_log: [...state.execution_log, `[SCOPE GATE] Rejected with confidence ${assessment.confidence_score.toFixed(2)}. Triggering REPLANNING with feedback.`]
         };
     }
