@@ -10,7 +10,7 @@ const getEnv = (key: string): string => {
 };
 
 export interface LLMConfig {
-    provider?: 'openai' | 'anthropic' | 'gemini';
+    provider?: 'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'moonshot';
     apiKey?: string;
     baseUrl?: string;
     modelName?: string;
@@ -51,7 +51,13 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
     }
 
     // Default: OpenAI or Compatible
-    const baseUrl = options.config?.baseUrl || getEnv("OPENAI_BASE_URL");
+    let baseUrl = options.config?.baseUrl || getEnv("OPENAI_BASE_URL");
+
+    // Auto-fill OpenRouter if provider is set to it
+    if (provider === 'openrouter' && !baseUrl) {
+        baseUrl = "https://openrouter.ai/api/v1";
+    }
+
     console.log(`[LLM Factory] Initializing OpenAI/Compatible with model ${modelName} at ${baseUrl || 'standard endpoint'}.`);
 
     return new ChatOpenAI({
@@ -60,7 +66,7 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
         maxTokens: options.config?.maxTokens,
         apiKey: apiKey,
         configuration: {
-            baseURL: baseUrl,
+            baseURL: baseUrl || undefined, // undefined uses the standard OpenAI endpoint
             defaultHeaders: {
                 "HTTP-Referer": "http://localhost:3000",
                 "X-Title": "Node SQL Agent"
@@ -80,10 +86,17 @@ export async function invokeLLM(llm: BaseChatModel, prompt: string | BaseMessage
 
         return content.trim();
     } catch (error: any) {
-        console.error(`[LLM Error] ${error.message}`);
+        // Attempt to extract more info about where we were calling
+        // @ts-ignore
+        const baseUrl = llm.configuration?.baseURL || 'standard OpenAI';
+        // @ts-ignore
+        const model = llm.modelName || llm.model || 'unknown model';
+
+        console.error(`[LLM Error] ${error.message} (Target: ${baseUrl}, Model: ${model})`);
+
         // If it's a 401, provide a more helpful localized error
         if (error.message?.includes('401') || error.status === 401) {
-            throw new Error("Authentication failed (401). Please check your API Key and ensure the Base URL is correct for your provider.");
+            throw new Error(`Authentication failed (401) for ${model}. Please check your API Key and ensure the Base URL (${baseUrl}) is correct.`);
         }
         throw error;
     }

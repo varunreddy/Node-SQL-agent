@@ -11,7 +11,7 @@ import { buildDatabaseGraph } from './agent/components/database/graph'
 import { HumanMessage } from "@langchain/core/messages"
 
 interface LLMConfig {
-  provider: 'openai' | 'anthropic' | 'gemini';
+  provider: 'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'moonshot';
   apiKey: string;
   baseUrl: string;
   modelName: string;
@@ -19,27 +19,32 @@ interface LLMConfig {
   temperature: number;
 }
 
-interface Config {
+interface DBConfig {
   dbType: 'postgres' | 'mysql' | 'sqlite';
-  dbHost: string;
-  dbPort: string;
-  dbName: string;
-  dbUser: string;
-  dbPass: string;
+  host: string;
+  port: number;
+  name: string;
+  user: string;
+  pass: string;
   sqlitePath: string;
+}
+
+interface Config {
+  dbConfig: DBConfig;
   llmConfig: LLMConfig;
 }
 
 
-
 const DEFAULT_CONFIG: Config = {
-  dbType: 'postgres',
-  dbHost: '',
-  dbPort: '5432',
-  dbName: '',
-  dbUser: '',
-  dbPass: '',
-  sqlitePath: './database.sqlite',
+  dbConfig: {
+    dbType: 'postgres',
+    host: '',
+    port: 5432,
+    name: '',
+    user: '',
+    pass: '',
+    sqlitePath: './database.sqlite',
+  },
   llmConfig: {
     provider: 'openai',
     apiKey: '',
@@ -56,8 +61,30 @@ export default function App() {
       const saved = localStorage.getItem('sql-agent-config-v3');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object' && parsed.llmConfig) {
-          return parsed;
+        // Ensure backward compatibility for older configs
+        if (parsed && typeof parsed === 'object') {
+          // If old flat structure, convert to new nested structure
+          if (parsed.dbType || parsed.llmConfig) {
+            return {
+              dbConfig: {
+                dbType: parsed.dbType || DEFAULT_CONFIG.dbConfig.dbType,
+                host: parsed.dbHost || DEFAULT_CONFIG.dbConfig.host,
+                port: parseInt(parsed.dbPort || DEFAULT_CONFIG.dbConfig.port.toString()),
+                name: parsed.dbName || DEFAULT_CONFIG.dbConfig.name,
+                user: parsed.dbUser || DEFAULT_CONFIG.dbConfig.user,
+                pass: parsed.dbPass || DEFAULT_CONFIG.dbConfig.pass,
+                sqlitePath: parsed.sqlitePath || DEFAULT_CONFIG.dbConfig.sqlitePath,
+              },
+              llmConfig: {
+                ...DEFAULT_CONFIG.llmConfig,
+                ...parsed.llmConfig,
+              }
+            };
+          }
+          // If already in new nested structure
+          if (parsed.dbConfig && parsed.llmConfig) {
+            return parsed;
+          }
         }
       }
     } catch (e) {
@@ -66,7 +93,33 @@ export default function App() {
     return DEFAULT_CONFIG;
   });
 
-  const [stagedConfig, setStagedConfig] = useState<Config>(activeConfig);
+  const [stagedConfig, setStagedConfig] = useState<Config>(() => {
+    // Initialize stagedConfig from activeConfig, then override with VITE_ env vars if present
+    const initialStagedConfig = { ...activeConfig };
+
+    // Override DB config with VITE_ env vars
+    initialStagedConfig.dbConfig = {
+      dbType: (import.meta.env.VITE_DB_TYPE as any) || initialStagedConfig.dbConfig.dbType,
+      host: import.meta.env.VITE_PSQL_HOST || initialStagedConfig.dbConfig.host,
+      port: parseInt(import.meta.env.VITE_PSQL_PORT || initialStagedConfig.dbConfig.port.toString()),
+      name: import.meta.env.VITE_PSQL_DATABASE || initialStagedConfig.dbConfig.name,
+      user: import.meta.env.VITE_PSQL_USER || initialStagedConfig.dbConfig.user,
+      pass: import.meta.env.VITE_PSQL_PASSWORD || initialStagedConfig.dbConfig.pass,
+      sqlitePath: import.meta.env.VITE_SQLITE_PATH || initialStagedConfig.dbConfig.sqlitePath,
+    };
+
+    // Override LLM config with VITE_ env vars
+    initialStagedConfig.llmConfig = {
+      provider: (import.meta.env.VITE_LLM_PROVIDER as any) || initialStagedConfig.llmConfig.provider,
+      apiKey: import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_GROQ_API_KEY || initialStagedConfig.llmConfig.apiKey,
+      baseUrl: import.meta.env.VITE_OPENAI_BASE_URL || initialStagedConfig.llmConfig.baseUrl,
+      modelName: import.meta.env.VITE_MODEL_NAME || initialStagedConfig.llmConfig.modelName,
+      maxTokens: parseInt(import.meta.env.VITE_MAX_TOKENS || initialStagedConfig.llmConfig.maxTokens.toString()),
+      temperature: parseFloat(import.meta.env.VITE_TEMPERATURE || initialStagedConfig.llmConfig.temperature.toString()),
+    };
+
+    return initialStagedConfig;
+  });
   const [dbSaveStatus, setDbSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [llmSaveStatus, setLlmSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [prompt, setPrompt] = useState('');
@@ -80,7 +133,10 @@ export default function App() {
 
   const handleSaveDb = () => {
     setDbSaveStatus('saving');
-    const newConfig = { ...activeConfig, ...stagedConfig };
+    const newConfig = {
+      ...activeConfig,
+      dbConfig: { ...activeConfig.dbConfig, ...stagedConfig.dbConfig }
+    };
     setActiveConfig(newConfig);
     localStorage.setItem('sql-agent-config-v3', JSON.stringify(newConfig));
     setTimeout(() => {
@@ -91,7 +147,10 @@ export default function App() {
 
   const handleSaveLlm = () => {
     setLlmSaveStatus('saving');
-    const newConfig = { ...activeConfig, ...stagedConfig };
+    const newConfig = {
+      ...activeConfig,
+      llmConfig: { ...activeConfig.llmConfig, ...stagedConfig.llmConfig }
+    };
     setActiveConfig(newConfig);
     localStorage.setItem('sql-agent-config-v3', JSON.stringify(newConfig));
     setTimeout(() => {
@@ -101,17 +160,17 @@ export default function App() {
   };
 
   const buildDbUrl = (c: Config) => {
-    if (c.dbType === 'sqlite') return c.sqlitePath;
-    if (!c.dbHost || !c.dbUser) return '';
-    const prefix = c.dbType === 'postgres' ? 'postgres://' : 'mysql://';
-    return `${prefix}${c.dbUser}:${c.dbPass}@${c.dbHost}:${c.dbPort}/${c.dbName}`;
+    if (c.dbConfig.dbType === 'sqlite') return c.dbConfig.sqlitePath;
+    if (!c.dbConfig.host || !c.dbConfig.user) return '';
+    const prefix = c.dbConfig.dbType === 'postgres' ? 'postgres://' : 'mysql://';
+    return `${prefix}${c.dbConfig.user}:${c.dbConfig.pass}@${c.dbConfig.host}:${c.dbConfig.port}/${c.dbConfig.name}`;
   };
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
 
     const dbUrl = buildDbUrl(stagedConfig);
-    if (!dbUrl && stagedConfig.dbType !== 'sqlite') {
+    if (!dbUrl && stagedConfig.dbConfig.dbType !== 'sqlite') {
       setStatus('error');
       setCurrentThought('Database configuration is incomplete or not saved.');
       return;
@@ -126,9 +185,9 @@ export default function App() {
     try {
       const config = {
         ...stagedConfig,
-        dbType: stagedConfig.dbType,
+        dbType: stagedConfig.dbConfig.dbType, // For backward compatibility with agent's expected config
         dbUrl,
-        sqlitePath: stagedConfig.sqlitePath
+        sqlitePath: stagedConfig.dbConfig.sqlitePath // For backward compatibility
       };
 
       const graph = buildDatabaseGraph();
@@ -277,8 +336,8 @@ export default function App() {
                   <div className="space-y-1">
                     <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Engine</label>
                     <select
-                      value={stagedConfig.dbType}
-                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbType: e.target.value as any })}
+                      value={stagedConfig.dbConfig.dbType}
+                      onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, dbType: e.target.value as any } })}
                       className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer"
                     >
                       <option value="postgres" className="bg-slate-950 text-white">PostgreSQL</option>
@@ -287,13 +346,13 @@ export default function App() {
                     </select>
                   </div>
 
-                  {stagedConfig.dbType === 'sqlite' ? (
+                  {stagedConfig.dbConfig.dbType === 'sqlite' ? (
                     <div className="space-y-1">
                       <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><FileCode className="w-3 h-3 mr-1" /> DB Path</label>
                       <input
                         type="text"
-                        value={stagedConfig.sqlitePath}
-                        onChange={(e) => setStagedConfig({ ...stagedConfig, sqlitePath: e.target.value })}
+                        value={stagedConfig.dbConfig.sqlitePath}
+                        onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, sqlitePath: e.target.value } })}
                         className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
                         placeholder="./database.sqlite"
                       />
@@ -304,8 +363,8 @@ export default function App() {
                         <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Globe className="w-3 h-3 mr-1" /> Host</label>
                         <input
                           type="text"
-                          value={stagedConfig.dbHost}
-                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbHost: e.target.value })}
+                          value={stagedConfig.dbConfig.host}
+                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, host: e.target.value } })}
                           className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                           placeholder="localhost"
                         />
@@ -314,9 +373,9 @@ export default function App() {
                         <div className="space-y-1 col-span-1">
                           <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Hash className="w-3 h-3 mr-1" /> Port</label>
                           <input
-                            type="text"
-                            value={stagedConfig.dbPort}
-                            onChange={(e) => setStagedConfig({ ...stagedConfig, dbPort: e.target.value })}
+                            type="number"
+                            value={stagedConfig.dbConfig.port}
+                            onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, port: parseInt(e.target.value) } })}
                             className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all font-mono"
                           />
                         </div>
@@ -324,8 +383,8 @@ export default function App() {
                           <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Database className="w-3 h-3 mr-1" /> Database</label>
                           <input
                             type="text"
-                            value={stagedConfig.dbName}
-                            onChange={(e) => setStagedConfig({ ...stagedConfig, dbName: e.target.value })}
+                            value={stagedConfig.dbConfig.name}
+                            onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, name: e.target.value } })}
                             className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
                             placeholder="postgres"
                           />
@@ -335,8 +394,8 @@ export default function App() {
                         <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><User className="w-3 h-3 mr-1" /> Username</label>
                         <input
                           type="text"
-                          value={stagedConfig.dbUser}
-                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbUser: e.target.value })}
+                          value={stagedConfig.dbConfig.user}
+                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, user: e.target.value } })}
                           className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
                         />
                       </div>
@@ -344,8 +403,8 @@ export default function App() {
                         <label className="text-[10px] text-muted-foreground uppercase ml-1 flex items-center"><Lock className="w-3 h-3 mr-1" /> Password</label>
                         <input
                           type="password"
-                          value={stagedConfig.dbPass}
-                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbPass: e.target.value })}
+                          value={stagedConfig.dbConfig.pass}
+                          onChange={(e) => setStagedConfig({ ...stagedConfig, dbConfig: { ...stagedConfig.dbConfig, pass: e.target.value } })}
                           className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/50 transition-all"
                         />
                       </div>
@@ -383,14 +442,16 @@ export default function App() {
                       className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all cursor-pointer"
                     >
                       <option value="openai" className="bg-slate-950 text-white">OpenAI (Compatible)</option>
+                      <option value="openrouter" className="bg-slate-950 text-white">OpenRouter</option>
+                      <option value="moonshot" className="bg-slate-950 text-white">Moonshot AI</option>
                       <option value="anthropic" className="bg-slate-950 text-white">Anthropic (Claude)</option>
-                      <option value="gemini" className="bg-slate-950 text-white">Gemini (Google)</option>
+                      <option value="gemini" className="bg-slate-950 text-white">Google Gemini</option>
                     </select>
                   </div>
 
-                  {stagedConfig.llmConfig.provider === 'openai' && (
+                  {['openai', 'openrouter', 'moonshot'].includes(stagedConfig.llmConfig.provider || '') && (
                     <div className="space-y-1">
-                      <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Base URL</label>
+                      <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Base URL (API Endpoint)</label>
                       <input
                         type="text"
                         value={stagedConfig.llmConfig.baseUrl}
@@ -399,8 +460,11 @@ export default function App() {
                           llmConfig: { ...stagedConfig.llmConfig, baseUrl: e.target.value }
                         })}
                         className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all"
-                        placeholder="https://api.groq.com/openai/v1"
+                        placeholder={stagedConfig.llmConfig.provider === 'openai' ? "https://api.openai.com/v1" : stagedConfig.llmConfig.provider === 'openrouter' ? "https://openrouter.ai/api/v1" : "https://api.moonshot.cn/v1"}
                       />
+                      <p className="text-[9px] text-muted-foreground/60 px-1 italic">
+                        {stagedConfig.llmConfig.provider === 'openai' ? "Standard OpenAI is default. Change for Groq, Ollama, etc." : "Required for this provider."}
+                      </p>
                     </div>
                   )}
                   <div className="space-y-1">

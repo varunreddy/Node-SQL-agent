@@ -27,7 +27,7 @@ export class AsyncLocalStorage {
 }
 
 export class AsyncResource {
-    constructor(type: string, triggerAsyncId?: number) { }
+    constructor(_type: string, _triggerAsyncId?: number) { }
     runInAsyncScope(fn: Function, thisArg: any, ...args: any[]) {
         return fn.apply(thisArg, args);
     }

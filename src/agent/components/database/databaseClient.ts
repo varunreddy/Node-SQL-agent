@@ -14,7 +14,15 @@ export class DatabaseClient extends EventEmitter {
 
     private constructor(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string }) {
         super();
-        const { dbType, dbUrl, sqlitePath } = config;
+        let { dbType, dbUrl, sqlitePath } = config;
+
+        // Fallback for dbUrl/sqlitePath if not provided
+        if (!dbUrl && (dbType === 'postgres' || dbType === 'mysql')) {
+            dbUrl = process.env.DATABASE_URL || process.env.DB_URL;
+        }
+        if (!sqlitePath && dbType === 'sqlite') {
+            sqlitePath = process.env.SQLITE_PATH || './database.sqlite';
+        }
 
         let knexConfig: Knex.Config;
 
@@ -27,6 +35,8 @@ export class DatabaseClient extends EventEmitter {
                 useNullAsDefault: true
             };
         } else {
+            // For Postgres/MySQL, we prefer the connection string
+            // but we could also build it from components if needed.
             knexConfig = {
                 client: dbType === 'postgres' ? 'pg' : 'mysql2',
                 connection: dbUrl,
@@ -38,7 +48,7 @@ export class DatabaseClient extends EventEmitter {
     }
 
     public static getInstance(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string }): DatabaseClient {
-        const key = config.dbUrl || config.sqlitePath || "default";
+        const key = config.dbUrl || config.sqlitePath || process.env.DATABASE_URL || "default";
         if (!DatabaseClient.instances.has(key)) {
             DatabaseClient.instances.set(key, new DatabaseClient(config));
         }
