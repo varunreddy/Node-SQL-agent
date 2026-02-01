@@ -24,6 +24,12 @@ export default defineConfig({
       "async_hooks": path.resolve(__dirname, 'src/async_hooks_mock.ts'),
     },
   },
+  build: {
+    rollupOptions: {
+      // Prevent externalizing node builtins that we are shadowing
+      external: [],
+    },
+  },
   define: {
     // Stub out global if needed (nodePolyfills handle most of this)
   },
