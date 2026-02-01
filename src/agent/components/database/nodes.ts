@@ -391,6 +391,24 @@ export async function policyNode(state: DatabaseSubState): Promise<Partial<Datab
     const currentStep = state.current_step;
     if (!currentStep) return {};
 
+    // --- EXEMPTION: Schema inspection and low-risk tools bypass confidence checks ---
+    // These are informational/prerequisite steps that should execute immediately
+    const EXEMPT_TOOLS = ["get_schema", "read_data"];
+    if (EXEMPT_TOOLS.includes(currentStep.tool_name)) {
+        logger.info(`[POLICY] Tool '${currentStep.tool_name}' is exempt from confidence checks. Approving immediately.`);
+        return {
+            current_step: {
+                ...currentStep,
+                status: "approved",
+                policy_decision: {
+                    approved: true,
+                    reason: `Tool '${currentStep.tool_name}' is exempt from confidence filtering (informational/prerequisite step).`
+                }
+            } as DatabaseStep,
+            execution_log: [...state.execution_log, `[POLICY] ${currentStep.tool_name} approved (exempt tool)`]
+        };
+    }
+
     // --- Confidence Threshold Filter ---
     // Only execute steps with confidence > 0.95 unless explicitly overridden
     const assessment = currentStep.scope_assessment;
