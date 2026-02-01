@@ -283,11 +283,30 @@ export async function databaseDecider(state: DatabaseSubState): Promise<Partial<
     const dbType = state.config?.dbType || 'postgres';
     const llm = getLLM({ jsonMode: true, config: state.config?.llmConfig });
 
+    // Check for REFINEMENT FEEDBACK (from Policy Gate rejection)
+    let refinementContext = "";
+    if (messages.length > 1) {
+        const latestMsg = messages[messages.length - 1];
+        if (latestMsg.content && latestMsg.content.includes("[SCOPE REFLECTION FEEDBACK")) {
+            refinementContext = `
+    === AUTOMATIC REPLANNING TRIGGERED ===
+    
+    Your previous SQL query was REJECTED due to low confidence.
+    The Scope Reflector has provided specific ISSUES and SUGGESTIONS:
+    
+    ${latestMsg.content}
+    
+    YOU MUST REFACTOR THE QUERY TO ADDRESS THESE ISSUES.
+    Do NOT submit the same query again. It will be rejected again.
+    `;
+        }
+    }
+
     const prompt = `
     You are a Database Management Engine.
     Current Database Dialect: ${dbType}
     User Request: ${userRequest}
-    Available Tools: ${JSON.stringify(recommendedTools)}
+    Available Tools: ${JSON.stringify(recommendedTools)}${refinementContext}
     Execution History: ${JSON.stringify(recentHistory)}
     Strategies:
     1. Dialect Awareness: Use ${dbType} syntax.
@@ -377,18 +396,51 @@ export async function policyNode(state: DatabaseSubState): Promise<Partial<Datab
     const CONFIDENCE_THRESHOLD = 0.95;
     
     if (assessment && assessment.confidence_score <= CONFIDENCE_THRESHOLD) {
-        // Low confidence - require refinement before execution
-        logger.warn(`[CONFIDENCE CHECK] Step confidence ${assessment.confidence_score} <= ${CONFIDENCE_THRESHOLD} - Requesting refinement.`);
+        // Low confidence - TRIGGER AUTOMATIC REPLANNING
+        logger.warn(`[CONFIDENCE CHECK] Step confidence ${assessment.confidence_score} <= ${CONFIDENCE_THRESHOLD} - Triggering REPLANNING.`);
+        
+        // Build refinement prompt for the decider
+        const issuesText = (assessment.performance_issues && assessment.performance_issues.length > 0)
+            ? assessment.performance_issues.map(issue => `  - ${issue}`).join('\n')
+            : '  (See optimization suggestions below)';
+        
+        const suggestionsText = (assessment.optimization_suggestions && assessment.optimization_suggestions.length > 0)
+            ? assessment.optimization_suggestions.map(sug => `  - ${sug}`).join('\n')
+            : '  (None provided)';
+        
+        const refinementMessage = `
+[SCOPE REFLECTION FEEDBACK - CONFIDENCE SCORE: ${assessment.confidence_score.toFixed(2)}]
+
+Performance Issues Detected:
+${issuesText}
+
+Optimization Suggestions:
+${suggestionsText}
+
+Alignment Assessment: ${assessment.user_intent_alignment}
+
+CRITICAL: You must refactor the SQL query to address these issues before execution.
+Rewrite the query, then it will be re-assessed.
+`;
+        
+        logger.warn(`Refinement Feedback:\n${refinementMessage}`);
+        
+        const { HumanMessage } = require("@langchain/core/messages");
+        
         return {
             current_step: {
                 ...currentStep,
                 status: "denied",
-                policy_decision: { 
-                    approved: false, 
-                    reason: `Confidence score ${assessment.confidence_score.toFixed(2)} is below ${CONFIDENCE_THRESHOLD} threshold. Issues: ${(assessment.performance_issues || []).join(', ') || 'See assessment'}. Please refine.`
+                policy_decision: {
+                    approved: false,
+                    reason: `Confidence score ${assessment.confidence_score.toFixed(2)} is below ${CONFIDENCE_THRESHOLD} threshold. Triggering replanning.`,
+                    refinement_feedback: refinementMessage,
+                    issues: assessment.performance_issues,
+                    suggestions: assessment.optimization_suggestions
                 }
             } as DatabaseStep,
-            execution_log: [...state.execution_log, `[CONFIDENCE FILTER] Rejected due to low confidence (${assessment.confidence_score.toFixed(2)})`]
+            messages: [...state.messages, new HumanMessage(refinementMessage)],
+            execution_log: [...state.execution_log, `[SCOPE GATE] Rejected with confidence ${assessment.confidence_score.toFixed(2)}. Triggering REPLANNING with feedback.`]
         };
     }
 
