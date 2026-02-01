@@ -416,6 +416,9 @@ export async function executorNode(state: DatabaseSubState): Promise<Partial<Dat
 }
 
 export async function finalizerNode(state: DatabaseSubState): Promise<Partial<DatabaseSubState>> {
+    const completed = state.completed_steps;
+    const lastStep = completed.length > 0 ? completed[completed.length - 1] : null;
+
     if (state.database_summary) return {};
 
     const currentStep = state.current_step;
@@ -429,11 +432,24 @@ export async function finalizerNode(state: DatabaseSubState): Promise<Partial<Da
         };
     }
 
+    // Try to find if we have a finish summary from decider (usually in current_step rationale or similar)
+    // Actually, in our current decider, we put the summary in the lastStep if it's a finish action.
+    // Let's just aggregate the last result if it was a query.
+    let data = undefined;
+    let row_count = undefined;
+
+    if (lastStep && lastStep.status === "completed" && lastStep.result && lastStep.result.success) {
+        data = lastStep.result.data;
+        row_count = lastStep.result.row_count;
+    }
+
     return {
         database_summary: {
-            summary_text: "Workflow ended.",
+            summary_text: currentStep?.description || (lastStep ? `Last action: ${lastStep.description}. Task complete.` : "Workflow ended."),
             actions_taken: state.completed_steps.map(s => s.description),
-            status: "partial"
+            status: lastStep?.status === "failed" ? "failed" : "success",
+            data,
+            row_count
         }
     };
 }

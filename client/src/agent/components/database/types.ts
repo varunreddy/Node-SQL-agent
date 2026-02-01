@@ -29,6 +29,8 @@ export interface DatabaseSummary {
     summary_text: string;
     actions_taken: string[];
     status: "success" | "partial" | "failed" | "blocked";
+    data?: any[];
+    row_count?: number;
 }
 
 export interface UserContext {

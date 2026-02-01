@@ -114,7 +114,7 @@ export class DatabaseClient extends EventEmitter {
         return this.schemaCache;
     }
 
-    async executeQuery(query: string, params?: any[]): Promise<{ success: boolean; data?: any[]; rowCount?: number; message?: string; error?: string }> {
+    async executeQuery(query: string, params?: any[]): Promise<{ success: boolean; data?: any[]; row_count?: number; message?: string; error?: string }> {
         if (!this.db) return { success: false, error: "Database not connected" };
 
         try {
@@ -122,26 +122,26 @@ export class DatabaseClient extends EventEmitter {
             const result = await this.db.raw(query, params || []);
 
             let data: any[] = [];
-            let rowCount = 0;
+            let row_count = 0;
 
             // Normalize results based on dialect
             const clientType = this.db.client.config.client;
             if (clientType === 'pg') {
                 data = result.rows;
-                rowCount = result.rowCount;
+                row_count = result.rowCount;
             } else if (clientType === 'mysql2') {
                 data = result[0];
-                rowCount = data.length;
+                row_count = data.length;
             } else if (clientType === 'sqlite3') {
                 data = result;
-                rowCount = result.length;
+                row_count = result.length;
             }
 
             return {
                 success: true,
                 data,
-                rowCount,
-                message: `Query returned ${rowCount} rows.`
+                row_count,
+                message: `Query returned ${row_count} rows.`
             };
         } catch (err: any) {
             logger.error(`Database Error: ${err.message}`);
