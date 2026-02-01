@@ -17,7 +17,8 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "node:async_hooks": path.resolve(__dirname, "./src/async_hooks_mock.ts"),
+      "node:async_hooks": path.resolve('./src/async_hooks_mock.ts'),
+      "async_hooks": path.resolve('./src/async_hooks_mock.ts'),
     },
   },
   server: {
