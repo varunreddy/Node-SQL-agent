@@ -1,10 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
-import path from 'path'
-import { fileURLToPath } from 'url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -22,17 +18,24 @@ export default defineConfig({
       enforce: 'pre',
       resolveId(id) {
         if (id === 'node:async_hooks' || id === 'async_hooks') {
-          return path.resolve(__dirname, 'src/async_hooks_mock.ts')
+          return '\0virtual:async_hooks'
+        }
+      },
+      load(id) {
+        if (id === '\0virtual:async_hooks') {
+          return `
+            export class AsyncLocalStorage {
+              disable() {}
+              getStore() { return undefined; }
+              run(_store, callback) { return callback(); }
+              exit(callback) { return callback(); }
+              enterWith(_store) {}
+            }
+          `
         }
       }
     }
   ],
-  resolve: {
-    alias: {
-      "node:async_hooks": path.resolve(__dirname, 'src/async_hooks_mock.ts'),
-      "async_hooks": path.resolve(__dirname, 'src/async_hooks_mock.ts'),
-    },
-  },
   server: {
     proxy: {
       '/api': {
