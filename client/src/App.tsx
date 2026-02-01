@@ -434,23 +434,26 @@ export default function App() {
                   <div className="space-y-1">
                     <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Provider</label>
                     <select
-                      value={stagedConfig.llmConfig.provider}
+                      value={['openai', 'openrouter', 'moonshot'].includes(stagedConfig.llmConfig.provider || '') ? 'openai' : stagedConfig.llmConfig.provider}
                       onChange={(e) => setStagedConfig({
                         ...stagedConfig,
-                        llmConfig: { ...stagedConfig.llmConfig, provider: e.target.value as any }
+                        llmConfig: {
+                          ...stagedConfig.llmConfig,
+                          provider: e.target.value as any,
+                          // Reset baseUrl if switching TO anthropic or gemini
+                          ...(e.target.value !== 'openai' ? { baseUrl: '' } : {})
+                        }
                       })}
                       className="w-full bg-slate-950/50 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all cursor-pointer"
                     >
                       <option value="openai" className="bg-slate-950 text-white">OpenAI (Compatible)</option>
-                      <option value="openrouter" className="bg-slate-950 text-white">OpenRouter</option>
-                      <option value="moonshot" className="bg-slate-950 text-white">Moonshot AI</option>
                       <option value="anthropic" className="bg-slate-950 text-white">Anthropic (Claude)</option>
                       <option value="gemini" className="bg-slate-950 text-white">Google Gemini</option>
                     </select>
                   </div>
 
                   {['openai', 'openrouter', 'moonshot'].includes(stagedConfig.llmConfig.provider || '') && (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <label className="text-[10px] text-muted-foreground uppercase ml-1 font-bold">Base URL (API Endpoint)</label>
                       <input
                         type="text"
@@ -459,11 +462,35 @@ export default function App() {
                           ...stagedConfig,
                           llmConfig: { ...stagedConfig.llmConfig, baseUrl: e.target.value }
                         })}
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all"
-                        placeholder={stagedConfig.llmConfig.provider === 'openai' ? "https://api.openai.com/v1" : stagedConfig.llmConfig.provider === 'openrouter' ? "https://openrouter.ai/api/v1" : "https://api.moonshot.cn/v1"}
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/50 transition-all font-mono text-[11px]"
+                        placeholder="https://api.openai.com/v1"
                       />
+                      <div className="flex flex-wrap gap-1.5 px-1">
+                        {[
+                          { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', provider: 'openrouter', model: 'openai/gpt-4o-mini' },
+                          { name: 'Moonshot', url: 'https://api.moonshot.cn/v1', provider: 'moonshot', model: 'moonshot-v1-8k' },
+                          { name: 'Groq', url: 'https://api.groq.com/openai/v1', provider: 'openai', model: 'llama-3.3-70b-versatile' },
+                          { name: 'Ollama', url: 'http://localhost:11434/v1', provider: 'openai', model: 'llama3' },
+                        ].map((shortcut) => (
+                          <button
+                            key={shortcut.name}
+                            onClick={() => setStagedConfig({
+                              ...stagedConfig,
+                              llmConfig: {
+                                ...stagedConfig.llmConfig,
+                                baseUrl: shortcut.url,
+                                provider: shortcut.provider as any,
+                                modelName: shortcut.model
+                              }
+                            })}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-all"
+                          >
+                            {shortcut.name}
+                          </button>
+                        ))}
+                      </div>
                       <p className="text-[9px] text-muted-foreground/60 px-1 italic">
-                        {stagedConfig.llmConfig.provider === 'openai' ? "Standard OpenAI is default. Change for Groq, Ollama, etc." : "Required for this provider."}
+                        Standard OpenAI is default. Shortcuts fill common endpoints.
                       </p>
                     </div>
                   )}
