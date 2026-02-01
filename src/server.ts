@@ -48,7 +48,11 @@ app.post('/api/get-schema', async (req, res) => {
 });
 
 // Serve static files from the React app dist folder
-const clientDistPath = path.join(process.cwd(), 'client', 'dist');
+// Works both in development and in production (Vercel)
+const clientDistPath = process.env.NODE_ENV === 'production' 
+    ? path.join(__dirname, '..', 'client', 'dist')
+    : path.join(process.cwd(), 'client', 'dist');
+
 app.use(express.static(clientDistPath));
 
 // Catch-all route to serve the React app

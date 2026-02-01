@@ -264,7 +264,7 @@ export default function App() {
         className={clsx(
           "glass border-r flex flex-col transition-all duration-300 ease-in-out z-50 overflow-hidden",
           "fixed inset-y-0 left-0 md:relative md:translate-x-0 h-full",
-          isSidebarOpen ? "w-[280px] md:w-80 p-6 translate-x-0" : "-translate-x-full md:translate-x-0 md:w-16 md:p-4"
+          isSidebarOpen ? "w-70 md:w-80 p-6 translate-x-0" : "-translate-x-full md:translate-x-0 md:w-16 md:p-4"
         )}
       >
         <button
@@ -590,15 +590,15 @@ export default function App() {
 
       {/* Main Content Area - Responsive Split */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] pointer-events-none rounded-full" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/5 blur-[120px] pointer-events-none rounded-full" />
+        <div className="absolute top-0 right-0 w-125 h-125 bg-primary/5 blur-30 pointer-events-none rounded-full" />
+        <div className="absolute bottom-0 left-0 w-125 h-125 bg-accent/5 blur-30 pointer-events-none rounded-full" />
 
         {/* Column 1: Prompt & Results */}
         <div className="w-full md:w-2/5 flex flex-col border-b md:border-b-0 md:border-r border-border/50 bg-black/10 backdrop-blur-sm z-10 overflow-hidden h-[60%] md:h-full">
           {/* Top: Prompt */}
           <div className="p-4 md:p-8 flex flex-col space-y-4 border-b border-border/50 overflow-hidden">
             <div className="flex items-center space-x-3 mb-2">
-              <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl shadow-lg shadow-primary/20">
+              <div className="p-2 bg-linear-to-br from-primary to-accent rounded-xl shadow-lg shadow-primary/20">
                 <Database className="w-5 h-5 text-white" />
               </div>
               <h1 className="text-xl font-bold tracking-tight vibrant-text italic">SQL Agent</h1>
@@ -613,7 +613,7 @@ export default function App() {
               <button
                 onClick={handleSubmit}
                 disabled={isThinking || !prompt.trim()}
-                className="absolute bottom-4 right-4 p-3 bg-gradient-to-br from-primary to-indigo-600 hover:scale-105 rounded-xl shadow-xl transition-all active:scale-95 group-hover:glow"
+                className="absolute bottom-4 right-4 p-3 bg-linear-to-br from-primary to-indigo-600 hover:scale-105 rounded-xl shadow-xl transition-all active:scale-95 group-hover:glow"
               >
                 <Send className="w-4 h-4 text-white" />
               </button>
