@@ -22,22 +22,13 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
     const provider = options.config?.provider || 'openai';
     const modelName = options.config?.modelName || getEnv("MODEL_NAME") || (provider === 'openai' ? "gpt-4o" : provider === 'anthropic' ? "claude-3-5-sonnet-20240620" : "gemini-1.5-pro");
     const temperature = options.config?.temperature ?? parseFloat(getEnv("TEMPERATURE") || "0");
-    const apiKey = options.config?.apiKey || (provider === 'openai' ? getEnv("OPENAI_API_KEY") : provider === 'anthropic' ? getEnv("ANTHROPIC_API_KEY") : provider === 'gemini' ? getEnv("GOOGLE_API_KEY") : "") || "";
+    const apiKey = (options.config?.apiKey || (provider === 'openai' ? getEnv("OPENAI_API_KEY") : provider === 'anthropic' ? getEnv("ANTHROPIC_API_KEY") : provider === 'gemini' ? getEnv("GOOGLE_API_KEY") : "") || "").trim();
 
     if (!apiKey) {
-        // Fallback for demo/default if no key provided
-        if (getEnv("GROQ_API_KEY") && provider === 'openai') {
-            return new ChatOpenAI({
-                modelName: options.config?.modelName || "llama-3.1-70b-versatile",
-                temperature,
-                maxTokens: options.config?.maxTokens,
-                apiKey: getEnv("GROQ_API_KEY"),
-                configuration: { baseURL: "https://api.groq.com/openai/v1" },
-                ...(options.jsonMode ? { modelKwargs: { response_format: { type: "json_object" } } } : {})
-            });
-        }
-        throw new Error(`API Key for ${provider} is missing. Please provide it in the UI and click 'Save', or set it in your .env file.`);
+        throw new Error(`API Key for ${provider} is missing. Please provide it in the UI, or set it in your .env file.`);
     }
+
+    console.log(`[LLM Factory] Initializing ${provider} with model ${modelName}. Key present: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);
 
     if (provider === 'anthropic') {
         return new ChatAnthropic({

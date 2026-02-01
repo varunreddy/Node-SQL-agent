@@ -43,8 +43,8 @@ const DEFAULT_CONFIG: Config = {
   llmConfig: {
     provider: 'openai',
     apiKey: '',
-    baseUrl: 'https://api.groq.com/openai/v1',
-    modelName: 'llama-3.1-70b-versatile',
+    baseUrl: '',
+    modelName: 'gpt-4o',
     maxTokens: 2048,
     temperature: 0.1
   }
