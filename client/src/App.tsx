@@ -7,6 +7,8 @@ import {
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import clsx from 'clsx'
+import { buildDatabaseGraph } from './agent/components/database/graph'
+import { HumanMessage } from "@langchain/core/messages"
 
 interface LLMConfig {
   provider: 'openai' | 'anthropic' | 'gemini';
@@ -26,13 +28,7 @@ interface Config {
   llmConfig: LLMConfig;
 }
 
-interface Message {
-  type: 'thinking' | 'sql_generated' | 'result' | 'error';
-  data?: any;
-  sql?: string;
-  step?: string;
-  log?: string;
-}
+
 
 export default function App() {
   const [activeConfig, setActiveConfig] = useState<Config>(() => {
@@ -111,46 +107,44 @@ export default function App() {
     setCurrentThought('Initializing agent...');
 
     try {
-      const payload = {
-        query: prompt,
-        config: {
-          ...stagedConfig,
-          dbType: stagedConfig.dbType,
-          dbUrl,
-          sqlitePath: stagedConfig.sqlitePath
-        }
+      const config = {
+        ...stagedConfig,
+        dbType: stagedConfig.dbType,
+        dbUrl,
+        sqlitePath: stagedConfig.sqlitePath
       };
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const graph = buildDatabaseGraph();
+      const inputs = {
+        messages: [new HumanMessage(prompt)],
+        execution_log: [],
+        completed_steps: [],
+        step_count: 0,
+        max_steps: 10,
+        recommended_tools: [],
+        config: config
+      };
 
-      if (!response.body) throw new Error('No response body');
+      const stream = await graph.stream(inputs, { streamMode: "values", recursionLimit: 100 });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      for await (const chunk of stream) {
+        if (chunk.database_summary) {
+          setResults(chunk.database_summary);
+          setStatus('success');
+          setCurrentThought('Task completed successfully.');
+        } else if (chunk.current_step) {
+          const step = chunk.current_step;
+          setCurrentThought(step.description);
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const message = JSON.parse(line.slice(6)) as Message;
-              handleMessage(message);
-            } catch (e) {
-              console.error('Error parsing SSE message', e);
-            }
+          if (step.tool_name === "execute_sql" && step.tool_parameters.query) {
+            setActiveSql(step.tool_parameters.query);
           }
+        } else {
+          setCurrentThought('Planning execution path...');
         }
       }
     } catch (error: any) {
+      console.error("Execution error:", error);
       setStatus('error');
       setCurrentThought('Error: ' + error.message);
     } finally {
@@ -158,25 +152,7 @@ export default function App() {
     }
   };
 
-  const handleMessage = (msg: Message) => {
-    switch (msg.type) {
-      case 'thinking':
-        setCurrentThought(msg.step || '');
-        break;
-      case 'sql_generated':
-        setActiveSql(msg.sql || '');
-        break;
-      case 'result':
-        setResults(msg.data);
-        setStatus('success');
-        setCurrentThought('Task completed successfully.');
-        break;
-      case 'error':
-        setStatus('error');
-        setCurrentThought(msg.data?.message || 'Execution failed');
-        break;
-    }
-  };
+
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-background text-foreground overflow-hidden font-sans selection:bg-primary/30 relative">

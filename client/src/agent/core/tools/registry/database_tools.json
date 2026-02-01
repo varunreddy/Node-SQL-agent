@@ -1,0 +1,271 @@
+{
+    "tools": [
+        {
+            "name": "execute_sql",
+            "description": "Execute a raw SQL query against the database. Use this for complex queries not covered by other tools.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The SQL query to execute"
+                    }
+                },
+                "required": [
+                    "query"
+                ]
+            }
+        },
+        {
+            "name": "get_schema",
+            "description": "Get the database schema (tables and columns).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        },
+        {
+            "name": "create_table",
+            "description": "Create a new table in the database.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "Name of the table to create"
+                    },
+                    "columns": {
+                        "type": "object",
+                        "description": "Dictionary of column names and their SQL types (e.g. {'id': 'INTEGER PRIMARY KEY', 'name': 'TEXT'})"
+                    }
+                },
+                "required": [
+                    "table_name",
+                    "columns"
+                ]
+            }
+        },
+        {
+            "name": "insert_record",
+            "description": "Insert a new record into a table.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "Name of the table"
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Dictionary of column names and values to insert"
+                    }
+                },
+                "required": [
+                    "table_name",
+                    "data"
+                ]
+            }
+        },
+        {
+            "name": "read_data",
+            "description": "Read data from a table with optional filtering.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "Name of the table"
+                    },
+                    "columns": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "List of columns to select (defaults to all)"
+                    },
+                    "conditions": {
+                        "type": "object",
+                        "description": "Dictionary of conditions for WHERE clause (e.g. {'id': 1})"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of rows to return"
+                    }
+                },
+                "required": [
+                    "table_name"
+                ]
+            }
+        },
+        {
+            "name": "update_record",
+            "description": "Update records in a table.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "Name of the table"
+                    },
+                    "updates": {
+                        "type": "object",
+                        "description": "Dictionary of columns and new values"
+                    },
+                    "conditions": {
+                        "type": "object",
+                        "description": "Dictionary of conditions to identify rows to update"
+                    }
+                },
+                "required": [
+                    "table_name",
+                    "updates",
+                    "conditions"
+                ]
+            }
+        },
+        {
+            "name": "delete_record",
+            "description": "Delete records from a table.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "Name of the table"
+                    },
+                    "conditions": {
+                        "type": "object",
+                        "description": "Dictionary of conditions to identify rows to delete"
+                    }
+                },
+                "required": [
+                    "table_name",
+                    "conditions"
+                ]
+            }
+        },
+        {
+            "name": "advanced_query",
+            "description": "Perform complex queries with joins, aggregates, grouping, and ordering.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tables": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "List of tables involved (main table first)"
+                    },
+                    "columns": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "List of columns to select (e.g. ['users.name', 'orders.total'])"
+                    },
+                    "joins": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "table": {
+                                    "type": "string"
+                                },
+                                "on": {
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "INNER",
+                                        "LEFT",
+                                        "RIGHT",
+                                        "FULL"
+                                    ]
+                                }
+                            },
+                            "required": [
+                                "table",
+                                "on"
+                            ]
+                        },
+                        "description": "List of join definitions"
+                    },
+                    "filters": {
+                        "type": "object",
+                        "description": "Dictionary of conditions (simple equality)"
+                    },
+                    "group_by": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "List of columns to group by"
+                    },
+                    "aggregates": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "func": {
+                                    "type": "string",
+                                    "enum": [
+                                        "COUNT",
+                                        "SUM",
+                                        "AVG",
+                                        "MIN",
+                                        "MAX"
+                                    ]
+                                },
+                                "column": {
+                                    "type": "string"
+                                },
+                                "alias": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "func",
+                                "column",
+                                "alias"
+                            ]
+                        },
+                        "description": "List of aggregate functions"
+                    },
+                    "order_by": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "column": {
+                                    "type": "string"
+                                },
+                                "direction": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ASC",
+                                        "DESC"
+                                    ]
+                                }
+                            },
+                            "required": [
+                                "column",
+                                "direction"
+                            ]
+                        },
+                        "description": "List of ordering rules"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Limit results"
+                    }
+                },
+                "required": [
+                    "tables"
+                ]
+            }
+        }
+    ]
+}
