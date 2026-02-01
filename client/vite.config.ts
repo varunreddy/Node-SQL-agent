@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
-import { fileURLToPath, URL } from 'node:url'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -17,9 +20,12 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "node:async_hooks": fileURLToPath(new URL('./src/async_hooks_mock.ts', import.meta.url)),
-      "async_hooks": fileURLToPath(new URL('./src/async_hooks_mock.ts', import.meta.url)),
+      "node:async_hooks": path.resolve(__dirname, 'src/async_hooks_mock.ts'),
+      "async_hooks": path.resolve(__dirname, 'src/async_hooks_mock.ts'),
     },
+  },
+  define: {
+    // Stub out global if needed (nodePolyfills handle most of this)
   },
   server: {
     proxy: {
