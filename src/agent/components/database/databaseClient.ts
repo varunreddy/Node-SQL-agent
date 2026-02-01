@@ -12,9 +12,9 @@ export class DatabaseClient extends EventEmitter {
     private schemaCache: Record<string, string[]> = {};
     private static instances: Map<string, DatabaseClient> = new Map();
 
-    private constructor(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string }) {
+    private constructor(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string, ssl?: boolean }) {
         super();
-        let { dbType, dbUrl, sqlitePath } = config;
+        let { dbType, dbUrl, sqlitePath, ssl } = config;
 
         // Fallback for dbUrl/sqlitePath if not provided
         if (!dbUrl && (dbType === 'postgres' || dbType === 'mysql')) {
@@ -39,16 +39,32 @@ export class DatabaseClient extends EventEmitter {
             // but we could also build it from components if needed.
             knexConfig = {
                 client: dbType === 'postgres' ? 'pg' : 'mysql2',
-                connection: dbUrl,
+                connection: dbUrl ? (ssl ? `${dbUrl}${dbUrl.includes('?') ? '&' : '?'}ssl=true` : dbUrl) : undefined,
                 pool: { min: 0, max: 5 }
             };
+
+            // If it's Postgres and SSL is requested, we often need to allow unauthorized certs for managed DBs
+            if (dbType === 'postgres' && ssl && typeof knexConfig.connection === 'string') {
+                // Knex handles connection strings, but for deeper SSL config we might need the object form
+                // However, for most managed DBs, adding ?ssl=true or sslmode=require to the URL is enough.
+                // If they need rejectUnauthorized: false, we'd need to parse the URL or use the object form.
+
+                // Let's refine the connection to an object if we have a URL and SSL is true
+                // to explicitly set rejectUnauthorized: false which is the #1 cause of 'insecure' errors.
+                if (dbUrl) {
+                    knexConfig.connection = {
+                        connectionString: dbUrl,
+                        ssl: ssl ? { rejectUnauthorized: false } : false
+                    };
+                }
+            }
         }
 
         this.db = knex(knexConfig);
     }
 
-    public static getInstance(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string }): DatabaseClient {
-        const key = config.dbUrl || config.sqlitePath || process.env.DATABASE_URL || "default";
+    public static getInstance(config: { dbType: 'postgres' | 'mysql' | 'sqlite', dbUrl?: string, sqlitePath?: string, ssl?: boolean }): DatabaseClient {
+        const key = `${config.dbUrl || config.sqlitePath || process.env.DATABASE_URL || "default"}_ssl_${!!config.ssl}`;
         if (!DatabaseClient.instances.has(key)) {
             DatabaseClient.instances.set(key, new DatabaseClient(config));
         }
