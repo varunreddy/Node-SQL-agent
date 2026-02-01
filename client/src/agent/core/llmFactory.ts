@@ -28,19 +28,19 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
         throw new Error(`API Key for ${provider} is missing. Please provide it in the UI, or set it in your .env file.`);
     }
 
-    console.log(`[LLM Factory] Initializing ${provider} with model ${modelName}. Key present: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);
-
     if (provider === 'anthropic') {
+        console.log(`[LLM Factory] Initializing Anthropic with model ${modelName}.`);
         return new ChatAnthropic({
             modelName,
             temperature,
             maxTokens: options.config?.maxTokens,
             anthropicApiKey: apiKey,
-            ...(options.jsonMode ? { modelOptions: { response_format: { type: "json_object" } } } : {}) // Note: LangChain Anthropic handle this differently sometimes
+            ...(options.jsonMode ? { modelOptions: { response_format: { type: "json_object" } } } : {})
         });
     }
 
     if (provider === 'gemini') {
+        console.log(`[LLM Factory] Initializing Gemini with model ${modelName}.`);
         return new ChatGoogleGenerativeAI({
             model: modelName,
             temperature,
@@ -52,6 +52,8 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
 
     // Default: OpenAI or Compatible
     const baseUrl = options.config?.baseUrl || getEnv("OPENAI_BASE_URL");
+    console.log(`[LLM Factory] Initializing OpenAI/Compatible with model ${modelName} at ${baseUrl || 'standard endpoint'}.`);
+
     return new ChatOpenAI({
         modelName,
         temperature,
@@ -69,11 +71,20 @@ export function getLLM(options: { jsonMode?: boolean, config?: LLMConfig } = {})
 }
 
 export async function invokeLLM(llm: BaseChatModel, prompt: string | BaseMessage[]): Promise<string> {
-    const response = await llm.invoke(prompt);
-    let content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+    try {
+        const response = await llm.invoke(prompt);
+        let content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
 
-    // Strip thinking tags if present (e.g. <think>...</think>)
-    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+        // Strip thinking tags if present (e.g. <think>...</think>)
+        content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
 
-    return content.trim();
+        return content.trim();
+    } catch (error: any) {
+        console.error(`[LLM Error] ${error.message}`);
+        // If it's a 401, provide a more helpful localized error
+        if (error.message?.includes('401') || error.status === 401) {
+            throw new Error("Authentication failed (401). Please check your API Key and ensure the Base URL is correct for your provider.");
+        }
+        throw error;
+    }
 }
