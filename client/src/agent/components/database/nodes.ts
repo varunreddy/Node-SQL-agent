@@ -273,17 +273,51 @@ export async function databaseDecider(state: DatabaseSubState): Promise<Partial<
     const dbType = state.config?.dbType || 'postgres';
     const llm = getLLM({ jsonMode: true, config: state.config?.llmConfig });
 
+    // Check for REFINEMENT FEEDBACK (from Policy Gate rejection)
+    let refinementContext = "";
+    let isReplanning = false;
+    if (messages.length > 1) {
+        const latestMsg = messages[messages.length - 1];
+        const msgContent = typeof latestMsg.content === 'string' ? latestMsg.content : '';
+        if (msgContent && msgContent.includes("[SCOPE REFLECTION FEEDBACK")) {
+            isReplanning = true;
+            refinementContext = `
+
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║                 🚨 REPLANNING MODE ACTIVATED 🚨                  ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    
+    YOUR PREVIOUS QUERY WAS REJECTED. You MUST generate an IMPROVED query.
+    
+    ${msgContent}
+    
+    ═══════════════════════════════════════════════════════════════════
+    MANDATORY: Generate a DIFFERENT, IMPROVED query that fixes the issues.
+    DO NOT resubmit the same query - it WILL be rejected again.
+    ═══════════════════════════════════════════════════════════════════
+    `;
+        }
+    }
+
+    const replanningNote = isReplanning
+        ? "IMPORTANT: You are in REPLANNING mode. Your previous query was rejected. Read the feedback above carefully and submit an IMPROVED query."
+        : "";
+
     const prompt = `
     You are a Database Management Engine.
     Current Database Dialect: ${dbType}
     User Request: ${userRequest}
+    ${refinementContext}
     Available Tools: ${JSON.stringify(recommendedTools)}
     Execution History: ${JSON.stringify(recentHistory)}
+    ${replanningNote}
+    
     Strategies:
     1. Dialect Awareness: Use ${dbType} syntax.
     2. Schema First: Call get_schema if needed.
     3. Math Safety: NULLIF for division by zero.
     4. Self-Correction: If Execution History contains a "failed" step, analyze the error and try a different/corrected query.
+    ${isReplanning ? "5. REPLANNING: Address ALL issues listed in the feedback above. Do NOT repeat the rejected query." : ""}
     
     Response Format (JSON):
     {
@@ -294,6 +328,7 @@ export async function databaseDecider(state: DatabaseSubState): Promise<Partial<
         "final_summary": "..."
     }
     `;
+
 
     try {
         const response = await invokeLLM(llm, prompt);
@@ -361,24 +396,107 @@ export async function policyNode(state: DatabaseSubState): Promise<Partial<Datab
     const currentStep = state.current_step;
     if (!currentStep) return {};
 
+    // --- EXEMPTION: Informational and prerequisite tools bypass confidence checks ---
+    // These are tools that:
+    // 1. Only read metadata/schema (no data modification risk)
+    // 2. Are prerequisite steps needed to plan the actual query
+    // 3. Cannot meaningfully "satisfy user intent" on their own (they're helper steps)
+    const EXEMPT_TOOLS = [
+        "get_schema",      // Schema inspection - prerequisite for query planning
+        "read_data",       // Read-only data inspection
+        "list_tables",     // Table enumeration
+        "describe_table",  // Column/type inspection
+        "get_table_info",  // Table metadata
+        "show_tables",     // MySQL-style table listing
+        "pragma_table_info" // SQLite table info
+    ];
+
+    if (EXEMPT_TOOLS.includes(currentStep.tool_name)) {
+        console.log(`[POLICY] Tool '${currentStep.tool_name}' is exempt from confidence checks (informational/prerequisite).`);
+        return {
+            current_step: {
+                ...currentStep,
+                status: "approved",
+                policy_decision: {
+                    approved: true,
+                    reason: `Tool '${currentStep.tool_name}' is exempt from confidence filtering (informational/prerequisite step).`
+                }
+            } as DatabaseStep,
+            execution_log: [...state.execution_log, `[POLICY] ${currentStep.tool_name} approved (exempt tool)`]
+        };
+    }
+
     // --- Confidence Threshold Filter ---
     // Only execute steps with confidence > 0.95 unless explicitly overridden
     const assessment = currentStep.scope_assessment;
     const CONFIDENCE_THRESHOLD = 0.95;
-    
+
     if (assessment && assessment.confidence_score <= CONFIDENCE_THRESHOLD) {
-        // Low confidence - require refinement before execution
-        console.warn(`[CONFIDENCE CHECK] Step confidence ${assessment.confidence_score} <= ${CONFIDENCE_THRESHOLD} - Requesting refinement.`);
+        // Low confidence - TRIGGER AUTOMATIC REPLANNING
+        console.warn(`[CONFIDENCE CHECK] Step confidence ${assessment.confidence_score} <= ${CONFIDENCE_THRESHOLD} - Triggering REPLANNING.`);
+
+        // Build refinement prompt for the decider with full context of rejected step
+        const issuesText = (assessment.performance_issues && assessment.performance_issues.length > 0)
+            ? assessment.performance_issues.map(issue => `  - ${issue}`).join('\n')
+            : '  (See optimization suggestions below)';
+
+        const suggestionsText = (assessment.optimization_suggestions && assessment.optimization_suggestions.length > 0)
+            ? assessment.optimization_suggestions.map(sug => `  - ${sug}`).join('\n')
+            : '  (None provided)';
+
+        // Include the rejected query/action for full context
+        const rejectedActionContext = currentStep.tool_name === 'execute_sql'
+            ? `REJECTED SQL QUERY:\n\`\`\`sql\n${currentStep.tool_parameters.query || '(no query)'}\n\`\`\``
+            : `REJECTED ACTION: ${currentStep.tool_name}\nParameters: ${JSON.stringify(currentStep.tool_parameters, null, 2)}`;
+
+        const refinementMessage = `
+[SCOPE REFLECTION FEEDBACK - REPLANNING REQUIRED]
+
+=== CONFIDENCE SCORE: ${assessment.confidence_score.toFixed(2)} (Threshold: ${CONFIDENCE_THRESHOLD}) ===
+
+${rejectedActionContext}
+
+=== ISSUES DETECTED ===
+${issuesText}
+
+=== OPTIMIZATION SUGGESTIONS ===
+${suggestionsText}
+
+=== ALIGNMENT ASSESSMENT ===
+${assessment.user_intent_alignment}
+
+=== TABLES INVOLVED ===
+${(assessment.tables_involved || []).join(', ') || 'Unknown'}
+
+=== RISK LEVEL ===
+${assessment.risk_level} (Complexity: ${assessment.complexity_score}/10)
+
+CRITICAL INSTRUCTIONS:
+1. Analyze the issues above and understand why the query was rejected.
+2. Generate a NEW, IMPROVED query that addresses ALL the listed issues.
+3. Do NOT submit the same query - it WILL be rejected again.
+4. Focus on the optimization suggestions provided.
+`;
+
+        console.warn(`Refinement Feedback:\n${refinementMessage}`);
+
+        const { HumanMessage } = await import("@langchain/core/messages");
+        const refinementMsg = new HumanMessage({ content: refinementMessage });
+
         return {
             current_step: {
                 ...currentStep,
                 status: "denied",
-                policy_decision: { 
-                    approved: false, 
-                    reason: `Confidence score ${assessment.confidence_score.toFixed(2)} is below ${CONFIDENCE_THRESHOLD} threshold. Issues: ${(assessment.performance_issues || []).join(', ') || 'See assessment'}. Please refine.`
+                policy_decision: {
+                    approved: false,
+                    reason: `Confidence score ${assessment.confidence_score.toFixed(2)} is below ${CONFIDENCE_THRESHOLD} threshold. Triggering replanning.`,
+                    refinement_feedback: refinementMessage,
+                    issues: assessment.performance_issues,
+                    suggestions: assessment.optimization_suggestions || []
                 }
             } as DatabaseStep,
-            execution_log: [...state.execution_log, `[CONFIDENCE FILTER] Rejected due to low confidence (${assessment.confidence_score.toFixed(2)})`]
+            messages: [...state.messages, refinementMsg],
+            execution_log: [...state.execution_log, `[SCOPE GATE] Rejected with confidence ${assessment.confidence_score.toFixed(2)}. Triggering REPLANNING with feedback.`]
         };
     }
 
@@ -461,20 +579,60 @@ export async function finalizerNode(state: DatabaseSubState): Promise<Partial<Da
         };
     }
 
-    // Try to find if we have a finish summary from decider (usually in current_step rationale or similar)
-    // Actually, in our current decider, we put the summary in the lastStep if it's a finish action.
-    // Let's just aggregate the last result if it was a query.
+    // Extract result data from the last completed step
+    // Handle different result formats from different tools
     let data = undefined;
     let row_count = undefined;
+    let summary_text = "Workflow ended.";
 
-    if (lastStep && lastStep.status === "completed" && lastStep.result && lastStep.result.success) {
-        data = lastStep.result.data;
-        row_count = lastStep.result.row_count;
+    if (lastStep && lastStep.status === "completed" && lastStep.result) {
+        const result = lastStep.result;
+
+        // Handle execute_sql results
+        if (result.success && result.data) {
+            data = result.data;
+            row_count = result.row_count;
+            summary_text = `Query executed successfully. ${row_count || result.data?.length || 0} rows returned.`;
+        }
+        // Handle get_schema results - the schema data itself IS the result
+        else if (lastStep.tool_name === "get_schema") {
+            // Schema could be in result.schema, result.data, or result directly
+            if (result.schema) {
+                // Format schema data as an array for table display
+                data = Object.entries(result.schema).map(([table, columns]) => ({
+                    table_name: table,
+                    columns: Array.isArray(columns) ? columns.join(', ') : JSON.stringify(columns)
+                }));
+                summary_text = `Database schema displayed successfully. Found ${Object.keys(result.schema).length} tables.`;
+            } else if (result.data) {
+                data = result.data;
+                summary_text = "Database schema displayed successfully.";
+            } else if (typeof result === 'object' && !result.error) {
+                // The result itself might be the schema object
+                data = Object.entries(result).filter(([k]) => k !== 'success' && k !== 'error').map(([table, columns]) => ({
+                    table_name: table,
+                    columns: Array.isArray(columns) ? columns.join(', ') : JSON.stringify(columns)
+                }));
+                if (data.length > 0) {
+                    summary_text = `Database schema displayed successfully. Found ${data.length} tables.`;
+                } else {
+                    // Just pass the raw result
+                    data = result;
+                    summary_text = "Database schema retrieved.";
+                }
+            }
+        }
+        // Handle any other successful result that has data
+        else if (result.data) {
+            data = result.data;
+            row_count = result.row_count || (Array.isArray(result.data) ? result.data.length : undefined);
+            summary_text = `Last action: ${lastStep.description}. Task complete.`;
+        }
     }
 
     return {
         database_summary: {
-            summary_text: currentStep?.description || (lastStep ? `Last action: ${lastStep.description}. Task complete.` : "Workflow ended."),
+            summary_text: currentStep?.description || summary_text,
             actions_taken: state.completed_steps.map(s => s.description),
             status: lastStep?.status === "failed" ? "failed" : "success",
             data,

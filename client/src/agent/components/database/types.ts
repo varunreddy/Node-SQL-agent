@@ -8,6 +8,9 @@ export interface DatabaseStep {
     policy_decision?: {
         approved: boolean;
         reason: string;
+        refinement_feedback?: string;
+        issues?: string[];
+        suggestions?: string[];
     } | null;
     result?: any;
     scope_assessment?: ScopeAssessment | null;
@@ -20,9 +23,11 @@ export interface ScopeAssessment {
     summary: string;
     requirements_checklist: Record<string, boolean>;
     performance_issues?: string[];
+    optimization_suggestions?: string[];
     user_intent_alignment: string;
     is_destructive?: boolean;
     operation_type?: string;
+    tables_involved?: string[];
 }
 
 export interface DatabaseSummary {

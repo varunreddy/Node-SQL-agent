@@ -69,9 +69,32 @@ function routeDecider(state: typeof GraphState.State) {
 }
 
 function routePolicy(state: typeof GraphState.State) {
-    if (state.current_step?.status === "approved") {
+    /**
+     * Route based on policy decision:
+     * - "approved" -> execute immediately
+     * - "denied" due to low confidence -> back to DECIDER for replanning
+     * - "denied" due to policy violation -> finalizer (hard stop)
+     */
+    const currentStep = state.current_step;
+    if (!currentStep) {
+        return "finalizer";
+    }
+    
+    if (currentStep.status === "approved") {
         return "executor";
     }
+    
+    // Denied - check reason
+    const policyDecision = currentStep.policy_decision;
+    const reason = policyDecision?.reason || "";
+    
+    // If denied due to confidence (low confidence threshold), trigger REPLANNING
+    if (reason.includes("Confidence score") || reason.toLowerCase().includes("confidence")) {
+        console.log("[POLICY ROUTER] Confidence-based rejection -> Routing back to DECIDER for REPLANNING");
+        return "decider";
+    }
+    
+    // Other policy violations = hard stop
     return "finalizer";
 }
 
@@ -107,7 +130,7 @@ export function buildDatabaseGraph() {
     workflow.addConditionalEdges(
         "policy",
         routePolicy,
-        { executor: "executor", finalizer: "finalizer" }
+        { executor: "executor", decider: "decider", finalizer: "finalizer" }
     );
 
     workflow.addConditionalEdges(
