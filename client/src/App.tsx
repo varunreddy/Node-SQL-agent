@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   Database, Send, Terminal, CheckCircle2,
   Loader2, History, ChevronLeft, ChevronRight,
-  Server, Lock, User, Globe, Hash, Save, Check, FileCode
+  Server, Lock, User, Globe, Hash, Save, Check, FileCode, Copy, X
 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -97,10 +97,18 @@ export default function App() {
   });
 
   const [stagedConfig, setStagedConfig] = useState<Config>(() => {
-    // Initialize stagedConfig from activeConfig, then override with VITE_ env vars if present
+    // Check if a saved config exists - if so, use it directly (user has saved their config)
+    const hasSavedConfig = localStorage.getItem('sql-agent-config-v3') !== null;
+
+    if (hasSavedConfig) {
+      // Use the saved config (which is already loaded in activeConfig)
+      return { ...activeConfig };
+    }
+
+    // Only use env vars for initial setup when no saved config exists
     const initialStagedConfig = { ...activeConfig };
 
-    // Override DB config with VITE_ env vars
+    // Override DB config with VITE_ env vars for first-time setup
     initialStagedConfig.dbConfig = {
       dbType: (import.meta.env.VITE_DB_TYPE as any) || initialStagedConfig.dbConfig.dbType,
       host: import.meta.env.VITE_PSQL_HOST || initialStagedConfig.dbConfig.host,
@@ -112,7 +120,7 @@ export default function App() {
       ssl: import.meta.env.VITE_DB_SSL === 'true' || initialStagedConfig.dbConfig.ssl,
     };
 
-    // Override LLM config with VITE_ env vars
+    // Override LLM config with VITE_ env vars for first-time setup
     initialStagedConfig.llmConfig = {
       provider: (import.meta.env.VITE_LLM_PROVIDER as any) || initialStagedConfig.llmConfig.provider,
       apiKey: import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_GROQ_API_KEY || initialStagedConfig.llmConfig.apiKey,
@@ -134,6 +142,17 @@ export default function App() {
   const [currentThought, setCurrentThought] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<'database' | 'llm'>('database');
+  const [copyStatus, setCopyStatus] = useState<{ [key: string]: boolean }>({});
+
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus({ ...copyStatus, [key]: true });
+      setTimeout(() => setCopyStatus({ ...copyStatus, [key]: false }), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   const handleSaveDb = () => {
     setDbSaveStatus('saving');
@@ -607,26 +626,52 @@ export default function App() {
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full h-full bg-secondary/10 border border-border/50 rounded-2xl p-4 md:p-6 text-sm resize-none focus:ring-2 focus:ring-primary/30 outline-none transition-all placeholder:text-muted-foreground/30 shadow-2xl glass-card leading-relaxed font-medium"
+                className="w-full h-full bg-secondary/10 border border-border/50 rounded-2xl p-4 md:p-6 pr-24 text-sm resize-none focus:ring-2 focus:ring-primary/30 outline-none transition-all placeholder:text-muted-foreground/30 shadow-2xl glass-card leading-relaxed font-medium"
                 placeholder="Ask your query..."
               />
-              <button
-                onClick={handleSubmit}
-                disabled={isThinking || !prompt.trim()}
-                className="absolute bottom-4 right-4 p-3 bg-linear-to-br from-primary to-indigo-600 hover:scale-105 rounded-xl shadow-xl transition-all active:scale-95 group-hover:glow"
-              >
-                <Send className="w-4 h-4 text-white" />
-              </button>
+              <div className="absolute bottom-4 right-4 flex items-center space-x-2">
+                {prompt.trim() && (
+                  <button
+                    onClick={() => setPrompt('')}
+                    className="p-3 bg-slate-700/50 hover:bg-slate-600/50 hover:scale-105 rounded-xl shadow-lg transition-all active:scale-95"
+                    title="Clear prompt"
+                  >
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                )}
+                <button
+                  onClick={handleSubmit}
+                  disabled={isThinking || !prompt.trim()}
+                  className="p-3 bg-linear-to-br from-primary to-indigo-600 hover:scale-105 rounded-xl shadow-xl transition-all active:scale-95 group-hover:glow"
+                >
+                  <Send className="w-4 h-4 text-white" />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Bottom: Analytical Results */}
           <div className="h-1/2 flex flex-col overflow-hidden group">
-            <div className="px-4 md:px-8 py-3 md:py-4 border-b border-border/50 flex items-center space-x-3 bg-black/20">
-              <div className="p-1.5 bg-accent/10 rounded-md">
-                <History className="w-4 h-4 text-accent" />
+            <div className="px-4 md:px-8 py-3 md:py-4 border-b border-border/50 flex items-center justify-between bg-black/20">
+              <div className="flex items-center space-x-3">
+                <div className="p-1.5 bg-accent/10 rounded-md">
+                  <History className="w-4 h-4 text-accent" />
+                </div>
+                <span className="text-xs font-bold tracking-widest uppercase text-accent">Analytical Results</span>
               </div>
-              <span className="text-xs font-bold tracking-widest uppercase text-accent">Analytical Results</span>
+              {results && (
+                <button
+                  onClick={() => copyToClipboard(JSON.stringify(results, null, 2), 'results')}
+                  className={clsx(
+                    "p-1.5 rounded-md transition-all flex items-center space-x-1",
+                    copyStatus['results'] ? "bg-emerald-500/20 text-emerald-500" : "bg-accent/10 text-accent hover:bg-accent/20"
+                  )}
+                  title="Copy results"
+                >
+                  {copyStatus['results'] ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span className="text-[10px] font-bold uppercase">{copyStatus['results'] ? 'Copied' : 'Copy'}</span>
+                </button>
+              )}
             </div>
             <div className="flex-1 overflow-auto p-4 md:p-6 custom-scrollbar bg-black/5">
               {results ? (
@@ -705,7 +750,18 @@ export default function App() {
 
           <div className="flex-1 bg-black/10 p-4 md:p-8 relative group overflow-hidden">
             {activeSql ? (
-              <div className="animate-in fade-in zoom-in-95 duration-500 h-full overflow-auto custom-scrollbar glass-card rounded-2xl border border-border/30 p-2">
+              <div className="animate-in fade-in zoom-in-95 duration-500 h-full overflow-auto custom-scrollbar glass-card rounded-2xl border border-border/30 p-2 relative">
+                <button
+                  onClick={() => copyToClipboard(activeSql, 'sql')}
+                  className={clsx(
+                    "absolute top-3 right-3 p-1.5 rounded-md transition-all flex items-center space-x-1 z-10",
+                    copyStatus['sql'] ? "bg-emerald-500/20 text-emerald-500" : "bg-primary/10 text-primary hover:bg-primary/20"
+                  )}
+                  title="Copy SQL"
+                >
+                  {copyStatus['sql'] ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span className="text-[10px] font-bold uppercase">{copyStatus['sql'] ? 'Copied' : 'Copy'}</span>
+                </button>
                 <SyntaxHighlighter
                   language="sql"
                   style={vscDarkPlus}
