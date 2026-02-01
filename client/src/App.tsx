@@ -138,6 +138,7 @@ export default function App() {
   const [isThinking, setIsThinking] = useState(false);
   const [status, setStatus] = useState<'idle' | 'thinking' | 'success' | 'error'>('idle');
   const [activeSql, setActiveSql] = useState('');
+  const [sqlHistory, setSqlHistory] = useState<Array<{ query: string; status: 'pending' | 'approved' | 'denied' | 'executed'; timestamp: number }>>([]);
   const [results, setResults] = useState<any>(null);
   const [currentThought, setCurrentThought] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -202,6 +203,7 @@ export default function App() {
     setIsThinking(true);
     setStatus('thinking');
     setActiveSql('');
+    setSqlHistory([]);
     setResults(null);
     setCurrentThought('Initializing agent...');
 
@@ -232,12 +234,65 @@ export default function App() {
           setResults(chunk.database_summary);
           setStatus('success');
           setCurrentThought('Task completed successfully.');
+          // Mark the last query as executed if there is one
+          setSqlHistory(prev => {
+            if (prev.length > 0) {
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...updated[updated.length - 1], status: 'executed' };
+              return updated;
+            }
+            return prev;
+          });
         } else if (chunk.current_step) {
           const step = chunk.current_step;
           setCurrentThought(step.description);
 
           if (step.tool_name === "execute_sql" && step.tool_parameters.query) {
-            setActiveSql(step.tool_parameters.query);
+            const newQuery = step.tool_parameters.query;
+            setActiveSql(newQuery);
+
+            // Determine status based on step status
+            let queryStatus: 'pending' | 'approved' | 'denied' = 'pending';
+            if (step.status === 'approved') queryStatus = 'approved';
+            if (step.status === 'denied') queryStatus = 'denied';
+
+            // Add to history with animation trigger
+            setSqlHistory(prev => {
+              // Check if this is a new query or update to existing
+              const lastQuery = prev.length > 0 ? prev[prev.length - 1] : null;
+              if (lastQuery && lastQuery.query === newQuery) {
+                // Update status of existing query
+                const updated = [...prev];
+                updated[updated.length - 1] = { ...updated[updated.length - 1], status: queryStatus };
+                return updated;
+              }
+              // New query - add to history
+              return [...prev, { query: newQuery, status: queryStatus, timestamp: Date.now() }];
+            });
+          }
+
+          // Handle denied steps (replanning feedback)
+          if (step.status === 'denied' && step.policy_decision) {
+            setCurrentThought(`⚠️ Query rejected: ${step.policy_decision.reason}. Replanning...`);
+          }
+        } else if (chunk.completed_steps && chunk.completed_steps.length > 0) {
+          // Update completed step statuses
+          const lastCompleted = chunk.completed_steps[chunk.completed_steps.length - 1];
+          if (lastCompleted.tool_name === 'execute_sql' && lastCompleted.result) {
+            setSqlHistory(prev => {
+              if (prev.length > 0) {
+                const updated = [...prev];
+                const targetIdx = prev.findIndex(h => h.query === lastCompleted.tool_parameters?.query);
+                if (targetIdx >= 0) {
+                  updated[targetIdx] = {
+                    ...updated[targetIdx],
+                    status: lastCompleted.status === 'failed' ? 'denied' : 'executed'
+                  };
+                }
+                return updated;
+              }
+              return prev;
+            });
           }
         } else {
           setCurrentThought('Planning execution path...');
@@ -626,7 +681,7 @@ export default function App() {
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full h-full bg-secondary/10 border border-border/50 rounded-2xl p-4 md:p-6 pr-24 text-sm resize-none focus:ring-2 focus:ring-primary/30 outline-none transition-all placeholder:text-muted-foreground/30 shadow-2xl glass-card leading-relaxed font-medium"
+                className="w-full h-full min-h-[200px] bg-secondary/10 border border-border/50 rounded-2xl p-4 md:p-6 pr-24 text-sm resize-none focus:ring-2 focus:ring-primary/30 outline-none transition-all placeholder:text-muted-foreground/30 shadow-2xl glass-card leading-relaxed font-medium"
                 placeholder="Ask your query..."
               />
               <div className="absolute bottom-4 right-4 flex items-center space-x-2">
@@ -749,35 +804,72 @@ export default function App() {
           </div>
 
           <div className="flex-1 bg-black/10 p-4 md:p-8 relative group overflow-hidden">
-            {activeSql ? (
-              <div className="animate-in fade-in zoom-in-95 duration-500 h-full overflow-auto custom-scrollbar glass-card rounded-2xl border border-border/30 p-2 relative">
-                <button
-                  onClick={() => copyToClipboard(activeSql, 'sql')}
-                  className={clsx(
-                    "absolute top-3 right-3 p-1.5 rounded-md transition-all flex items-center space-x-1 z-10",
-                    copyStatus['sql'] ? "bg-emerald-500/20 text-emerald-500" : "bg-primary/10 text-primary hover:bg-primary/20"
-                  )}
-                  title="Copy SQL"
-                >
-                  {copyStatus['sql'] ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span className="text-[10px] font-bold uppercase">{copyStatus['sql'] ? 'Copied' : 'Copy'}</span>
-                </button>
-                <SyntaxHighlighter
-                  language="sql"
-                  style={vscDarkPlus}
-                  customStyle={{
-                    background: 'transparent',
-                    padding: '1.5rem',
-                    margin: 0,
-                    fontSize: '14px',
-                    fontFamily: '"Fira Code", monospace',
-                    height: '100%',
-                    lineHeight: '1.6',
-                  }}
-                  wrapLines={true}
-                >
-                  {activeSql}
-                </SyntaxHighlighter>
+            {sqlHistory.length > 0 || activeSql ? (
+              <div className="h-full overflow-auto custom-scrollbar space-y-4">
+                {sqlHistory.map((item, index) => (
+                  <div
+                    key={item.timestamp}
+                    className={clsx(
+                      "animate-in fade-in slide-in-from-bottom-4 duration-500 glass-card rounded-2xl border p-2 relative transition-all",
+                      item.status === 'executed' ? "border-emerald-500/30 bg-emerald-500/5" :
+                        item.status === 'denied' ? "border-red-500/30 bg-red-500/5" :
+                          item.status === 'approved' ? "border-primary/30 bg-primary/5" :
+                            "border-border/30"
+                    )}
+                  >
+                    {/* Status Badge */}
+                    <div className="absolute top-3 left-3 flex items-center space-x-2 z-10">
+                      <span className={clsx(
+                        "text-[9px] font-bold uppercase px-2 py-0.5 rounded-full",
+                        item.status === 'executed' ? "bg-emerald-500/20 text-emerald-500" :
+                          item.status === 'denied' ? "bg-red-500/20 text-red-500" :
+                            item.status === 'approved' ? "bg-primary/20 text-primary" :
+                              "bg-yellow-500/20 text-yellow-500"
+                      )}>
+                        {item.status === 'executed' ? '✓ Executed' :
+                          item.status === 'denied' ? '✗ Rejected' :
+                            item.status === 'approved' ? '→ Approved' :
+                              '⏳ Pending'}
+                      </span>
+                      {sqlHistory.length > 1 && (
+                        <span className="text-[9px] font-mono text-muted-foreground/50">
+                          v{index + 1}{index === sqlHistory.length - 1 ? ' (latest)' : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Copy Button */}
+                    <button
+                      onClick={() => copyToClipboard(item.query, `sql-${index}`)}
+                      className={clsx(
+                        "absolute top-3 right-3 p-1.5 rounded-md transition-all flex items-center space-x-1 z-10",
+                        copyStatus[`sql-${index}`] ? "bg-emerald-500/20 text-emerald-500" : "bg-primary/10 text-primary hover:bg-primary/20"
+                      )}
+                      title="Copy SQL"
+                    >
+                      {copyStatus[`sql-${index}`] ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span className="text-[10px] font-bold uppercase">{copyStatus[`sql-${index}`] ? 'Copied' : 'Copy'}</span>
+                    </button>
+
+                    <div className="pt-8">
+                      <SyntaxHighlighter
+                        language="sql"
+                        style={vscDarkPlus}
+                        customStyle={{
+                          background: 'transparent',
+                          padding: '1rem',
+                          margin: 0,
+                          fontSize: '13px',
+                          fontFamily: '"Fira Code", monospace',
+                          lineHeight: '1.5',
+                        }}
+                        wrapLines={true}
+                      >
+                        {item.query}
+                      </SyntaxHighlighter>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted-foreground/10 space-y-4">
