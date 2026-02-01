@@ -57,5 +57,39 @@ export default defineConfig({
         secure: false,
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('@langchain')) {
+              return 'langchain';
+            }
+            if (id.includes('lucide-react')) {
+              return 'icons';
+            }
+            if (id.includes('react-syntax-highlighter') ||
+              id.includes('prismjs') ||
+              id.includes('react-markdown') ||
+              id.includes('unified') ||
+              id.includes('remark') ||
+              id.includes('micromark') ||
+              id.includes('vfile')) {
+              return 'renderers';
+            }
+            if (id.includes('zod') || id.includes('axios')) {
+              return 'utils';
+            }
+            // Group polyfills together
+            if (id.includes('polyfill') || id.includes('node-libs-browser')) {
+              return 'polyfills';
+            }
+            return 'vendor';
+          }
+        }
+      }
+    }
   }
 })
