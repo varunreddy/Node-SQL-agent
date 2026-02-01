@@ -9,6 +9,76 @@ const logger = {
     warn: (msg: string) => console.warn(`[WARN] ${msg}`),
 };
 
+// --- SQL Pattern to Technique Mapping ---
+// Maps detected query patterns to recommended SQL techniques
+const SQL_PATTERNS = {
+    per_entity_argmax: {
+        description: "Find top/bottom N per group (e.g., top rental per customer)",
+        technique: "Window Function with ROW_NUMBER/RANK",
+        example: `WITH ranked AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY amount DESC) as rn
+  FROM payment
+)
+SELECT * FROM ranked WHERE rn = 1;`,
+        keywords: ["ROW_NUMBER", "RANK", "DENSE_RANK", "PARTITION BY", "WITH"]
+    },
+    running_totals: {
+        description: "Cumulative sums, running averages, or moving aggregates",
+        technique: "Cumulative Window Function",
+        example: `SELECT payment_date, amount,
+  SUM(amount) OVER (ORDER BY payment_date) as cumulative_total
+FROM payment;`,
+        keywords: ["SUM() OVER", "AVG() OVER", "ORDER BY", "ROWS BETWEEN"]
+    },
+    period_comparison: {
+        description: "Compare current period to previous (month-over-month, etc.)",
+        technique: "LAG/LEAD Window Functions",
+        example: `SELECT month, revenue,
+  LAG(revenue) OVER (ORDER BY month) as prev_month,
+  revenue - LAG(revenue) OVER (ORDER BY month) as growth
+FROM monthly_revenue;`,
+        keywords: ["LAG", "LEAD", "OVER", "ORDER BY"]
+    },
+    ranking: {
+        description: "Rank items by some metric (top films, best customers)",
+        technique: "RANK/DENSE_RANK Window Functions",
+        example: `SELECT film_id, title,
+  DENSE_RANK() OVER (ORDER BY rental_count DESC) as popularity_rank
+FROM film_stats;`,
+        keywords: ["RANK", "DENSE_RANK", "NTILE", "PERCENT_RANK"]
+    },
+    complex_aggregation: {
+        description: "Multi-step aggregations or derived tables",
+        technique: "Common Table Expressions (CTEs)",
+        example: `WITH customer_totals AS (
+  SELECT customer_id, SUM(amount) as total_spent
+  FROM payment GROUP BY customer_id
+),
+category_preferences AS (
+  SELECT customer_id, category_id, COUNT(*) as rental_count
+  FROM rental r JOIN inventory i ... GROUP BY ...
+)
+SELECT * FROM customer_totals ct JOIN category_preferences cp ...;`,
+        keywords: ["WITH", "AS (", "CTE"]
+    },
+    sequential_analysis: {
+        description: "Time-series or sequential data analysis",
+        technique: "Window Functions with ORDER BY",
+        example: `SELECT rental_date,
+  COUNT(*) OVER (ORDER BY rental_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as weekly_rolling
+FROM rental;`,
+        keywords: ["OVER", "ORDER BY", "ROWS BETWEEN", "LAG", "LEAD"]
+    },
+    standard: {
+        description: "Simple queries without complex patterns",
+        technique: "Standard SQL (SELECT, JOIN, GROUP BY)",
+        example: `SELECT * FROM customer WHERE active = 1;`,
+        keywords: []
+    }
+} as const;
+
+type PatternType = keyof typeof SQL_PATTERNS;
+
 // --- Policy Validator ---
 
 export interface PolicyDecision {
@@ -103,12 +173,99 @@ async function reflectOnQuery(
     }
 
     let description = `Tool: ${toolName}`;
+    const techniqueWarnings: string[] = [];
+
     if (toolName === "execute_sql") {
         description = `SQL Query: ${toolParams.query || ''}`;
         const sqlLower = (toolParams.query || '').toLowerCase();
-        if (plannerOutput && plannerOutput.operation === "sequential_analysis") {
-            if (!sqlLower.includes("order by") && !sqlLower.includes("over")) {
-                description += "\n[WARNING: Planner requested Sequential/Temporal Analysis, but SQL lacks 'ORDER BY' or Window Functions! This is likely a Semantic Failure.]";
+        const sqlUpper = (toolParams.query || '').toUpperCase();
+
+        // Validate against planner's recommended technique
+        if (plannerOutput) {
+            const operation = plannerOutput.operation;
+            const validationKeywords = plannerOutput.validation_keywords || [];
+
+            // Check if required keywords are present
+            if (validationKeywords.length > 0) {
+                const hasRequiredKeywords = validationKeywords.some((kw: string) =>
+                    sqlUpper.includes(kw.toUpperCase())
+                );
+
+                if (!hasRequiredKeywords && operation !== 'standard') {
+                    techniqueWarnings.push(
+                        `Pattern '${operation}' was detected but SQL does not use recommended technique (${plannerOutput.recommended_technique}). ` +
+                        `Expected keywords: ${validationKeywords.join(', ')}`
+                    );
+                }
+            }
+
+            // Specific pattern validations
+            if (operation === "per_entity_argmax") {
+                if (!sqlUpper.includes("PARTITION BY") && !sqlUpper.includes("ROW_NUMBER") && !sqlUpper.includes("RANK")) {
+                    techniqueWarnings.push(
+                        "❌ Pattern 'per_entity_argmax' detected but SQL lacks ROW_NUMBER/RANK with PARTITION BY. " +
+                        "Use: ROW_NUMBER() OVER (PARTITION BY group_col ORDER BY metric DESC)"
+                    );
+                }
+            }
+
+            if (operation === "running_totals") {
+                if (!sqlUpper.includes("OVER") || !sqlUpper.includes("ORDER BY")) {
+                    techniqueWarnings.push(
+                        "❌ Pattern 'running_totals' detected but SQL lacks cumulative window function. " +
+                        "Use: SUM(amount) OVER (ORDER BY date)"
+                    );
+                }
+            }
+
+            if (operation === "period_comparison") {
+                if (!sqlUpper.includes("LAG") && !sqlUpper.includes("LEAD")) {
+                    techniqueWarnings.push(
+                        "❌ Pattern 'period_comparison' detected but SQL lacks LAG/LEAD functions. " +
+                        "Use: LAG(value) OVER (ORDER BY period) for previous period comparison"
+                    );
+                }
+            }
+
+            if (operation === "ranking") {
+                if (!sqlUpper.includes("RANK") && !sqlUpper.includes("DENSE_RANK") && !sqlUpper.includes("ROW_NUMBER")) {
+                    techniqueWarnings.push(
+                        "❌ Pattern 'ranking' detected but SQL lacks ranking window functions. " +
+                        "Use: DENSE_RANK() OVER (ORDER BY metric DESC)"
+                    );
+                }
+            }
+
+            if (operation === "complex_aggregation") {
+                if (!sqlUpper.includes("WITH") && !sqlUpper.includes("AS (")) {
+                    techniqueWarnings.push(
+                        "⚠️ Pattern 'complex_aggregation' detected but SQL lacks CTEs. " +
+                        "Consider using WITH clause for better readability and maintainability."
+                    );
+                }
+            }
+
+            if (operation === "sequential_analysis") {
+                if (!sqlLower.includes("order by") && !sqlLower.includes("over")) {
+                    techniqueWarnings.push(
+                        "❌ Pattern 'sequential_analysis' detected but SQL lacks ORDER BY or Window Functions. " +
+                        "Sequential analysis requires proper ordering."
+                    );
+                }
+            }
+        }
+
+        // Add warnings to description
+        if (techniqueWarnings.length > 0) {
+            description += "\n\n[SQL TECHNIQUE VALIDATION WARNINGS]:\n" + techniqueWarnings.join('\n');
+        }
+
+        // Detect anti-patterns
+        if (sqlUpper.includes("SELECT") && sqlUpper.includes("(") && sqlUpper.includes("SELECT") &&
+            !sqlUpper.includes("WITH") && !sqlUpper.includes("OVER")) {
+            const selectCount = (sqlUpper.match(/SELECT/g) || []).length;
+            if (selectCount > 2) {
+                description += "\n[ANTI-PATTERN WARNING: Multiple nested subqueries detected. Consider using CTEs for clarity.]";
             }
         }
     } else if (toolName === "advanced_query") {
@@ -215,20 +372,56 @@ export async function plannerNode(state: DatabaseSubState): Promise<Partial<Data
     const userRequest = state.messages[0].content as string;
     const llm = getLLM({ jsonMode: true, config: state.config?.llmConfig });
 
+    // Build pattern descriptions for the LLM
+    const patternDescriptions = Object.entries(SQL_PATTERNS)
+        .map(([key, val]) => `- ${key}: ${val.description}`)
+        .join('\n');
+
     const prompt = `
-    You are a SQL Query Planner. Analyze the user request.
+    You are an Expert SQL Query Planner. Analyze the user request and detect the query pattern.
+    
     User Request: "${userRequest}"
-    Detect patterns: per_entity_argmax, statistical_analysis, sequential_analysis, standard.
-    Return JSON: { "entities": "...", "measure": "...", "operation": "...", "constraint": "...", "interpretation_note": "..." }
+    
+    AVAILABLE PATTERNS:
+    ${patternDescriptions}
+    
+    PATTERN DETECTION GUIDELINES:
+    1. "per_entity_argmax" - Questions like "top X per group", "highest/lowest per category", "best performing per..."
+    2. "running_totals" - Questions involving "cumulative", "running total", "progressive sum"
+    3. "period_comparison" - Questions comparing "this month vs last", "growth", "change over time"
+    4. "ranking" - Questions asking for "rank", "top N overall", "best/worst overall"
+    5. "complex_aggregation" - Multi-step analysis requiring intermediate calculations
+    6. "sequential_analysis" - Time-series, trends, rolling averages
+    7. "standard" - Simple lookups, counts, basic aggregations
+    
+    Return JSON:
+    {
+        "entities": "main entities/tables involved",
+        "measure": "what metric is being calculated",
+        "operation": "one of: per_entity_argmax | running_totals | period_comparison | ranking | complex_aggregation | sequential_analysis | standard",
+        "constraint": "any filters or conditions",
+        "interpretation_note": "brief explanation of what the query should do",
+        "requires_window_function": true/false,
+        "requires_cte": true/false
+    }
     `;
 
     const response = await invokeLLM(llm, prompt);
-    let plan = {};
+    let plan: any = {};
     try {
         plan = JSON.parse(response);
     } catch (e) {
         plan = { operation: "standard" };
     }
+
+    // Enrich plan with recommended technique from SQL_PATTERNS
+    const operation = plan.operation as PatternType || 'standard';
+    const patternInfo = SQL_PATTERNS[operation] || SQL_PATTERNS.standard;
+    plan.recommended_technique = patternInfo.technique;
+    plan.technique_example = patternInfo.example;
+    plan.validation_keywords = patternInfo.keywords;
+
+    console.log(`[PLANNER] Detected pattern: ${operation}, Technique: ${patternInfo.technique}`);
 
     return { planner_output: plan };
 }
@@ -303,21 +496,69 @@ export async function databaseDecider(state: DatabaseSubState): Promise<Partial<
         ? "IMPORTANT: You are in REPLANNING mode. Your previous query was rejected. Read the feedback above carefully and submit an IMPROVED query."
         : "";
 
+    // Build planner context with recommended technique
+    let plannerTechniqueGuidance = "";
+    if (state.planner_output) {
+        const po = state.planner_output;
+        plannerTechniqueGuidance = `
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║              📊 PLANNER RECOMMENDED SQL TECHNIQUE 📊              ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    
+    Pattern Detected: ${po.operation || 'standard'}
+    Recommended Technique: ${po.recommended_technique || 'Standard SQL'}
+    ${po.requires_window_function ? '⚡ REQUIRES WINDOW FUNCTION (OVER clause)' : ''}
+    ${po.requires_cte ? '⚡ REQUIRES CTE (WITH clause)' : ''}
+    
+    EXAMPLE of recommended technique:
+    \`\`\`sql
+    ${po.technique_example || 'SELECT * FROM table;'}
+    \`\`\`
+    
+    IMPORTANT: You MUST use the recommended technique above when generating SQL.
+    - For per_entity_argmax: Use ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
+    - For running_totals: Use SUM/AVG() OVER (ORDER BY ...)
+    - For period_comparison: Use LAG() or LEAD() window functions
+    - For ranking: Use RANK() or DENSE_RANK() OVER (ORDER BY ...)
+    - For complex_aggregation: Use CTEs with WITH clause
+    ═══════════════════════════════════════════════════════════════════
+        `;
+    }
+
     const prompt = `
-    You are a Database Management Engine.
+    You are a Database Management Engine with expertise in advanced SQL patterns.
     Current Database Dialect: ${dbType}
     User Request: ${userRequest}
+    ${plannerTechniqueGuidance}
     ${refinementContext}
     Available Tools: ${JSON.stringify(recommendedTools)}
     Execution History: ${JSON.stringify(recentHistory)}
     ${replanningNote}
     
-    Strategies:
+    CORE STRATEGIES:
     1. Dialect Awareness: Use ${dbType} syntax.
     2. Schema First: Call get_schema if needed.
     3. Math Safety: NULLIF for division by zero.
     4. Self-Correction: If Execution History contains a "failed" step, analyze the error and try a different/corrected query.
-    ${isReplanning ? "5. REPLANNING: Address ALL issues listed in the feedback above. Do NOT repeat the rejected query." : ""}
+    
+    ADVANCED SQL GUIDELINES:
+    5. **Window Functions**: For per-group rankings, running totals, or comparisons, ALWAYS use window functions:
+       - ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...) for per-entity top-N
+       - SUM() OVER (ORDER BY ...) for cumulative totals
+       - LAG()/LEAD() for period comparisons
+       - RANK()/DENSE_RANK() for rankings
+    
+    6. **CTEs (Common Table Expressions)**: For complex multi-step queries:
+       - Use WITH clause to break down complex logic
+       - Name intermediate results clearly
+       - Prefer CTEs over nested subqueries for readability
+    
+    7. **Avoid Anti-Patterns**:
+       - ❌ Correlated subqueries when window functions would work
+       - ❌ Multiple scans of the same table when one window pass suffices
+       - ❌ Self-joins for sequential comparisons (use LAG/LEAD instead)
+    
+    ${isReplanning ? "8. REPLANNING: Address ALL issues listed in the feedback above. Do NOT repeat the rejected query." : ""}
     
     Response Format (JSON):
     {
