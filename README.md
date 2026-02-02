@@ -23,22 +23,6 @@ Native integration with leading AI providers:
 - **Anthropic Claude** - Direct integration with Claude models
 - **Google Gemini** - Native Google Generative AI support
 
-### Intelligent Agent Pipeline
-The agent uses a sophisticated multi-step reasoning pipeline built with LangGraph.js:
-
-```
-┌─────────┐    ┌─────────┐    ┌────────────────┐    ┌────────┐    ┌──────────┐    ┌───────────┐
-│ Planner │───▶│ Decider │───▶│ Scope Reflector│───▶│ Policy │───▶│ Executor │───▶│ Finalizer │
-└─────────┘    └─────────┘    └────────────────┘    └────────┘    └──────────┘    └───────────┘
-```
-
-1. **Planner** - Analyzes user intent and creates a query strategy
-2. **Decider** - Determines the next best action based on context
-3. **Scope Reflector** - Evaluates query scope, complexity, and risk
-4. **Policy** - Validates actions against security policies (confidence thresholds, destructive operation guards)
-5. **Executor** - Safely executes approved SQL queries
-6. **Finalizer** - Compiles results and generates human-readable summaries
-
 ### Modern UI Experience
 - **Dark Theme with Glassmorphism** - Vibrant, professional design
 - **Real-time Reasoning Visualization** - Watch the agent think step-by-step
@@ -46,34 +30,6 @@ The agent uses a sophisticated multi-step reasoning pipeline built with LangGrap
 - **Query Status Tracking** - Visual indicators for pending, approved, denied, and executed queries
 - **Responsive Design** - Works seamlessly on desktop and mobile
 - **Configuration Persistence** - Settings saved to localStorage
-
----
-
-## 🏗️ Architecture
-
-```
-SQL-agent-node/
-├── src/                          # Backend source code
-│   ├── server.ts                 # Express server with API endpoints
-│   └── agent/                    # Agent logic
-│       ├── core/
-│       │   └── llmFactory.ts     # Multi-provider LLM initialization
-│       └── components/
-│           └── database/
-│               ├── graph.ts      # LangGraph state machine
-│               ├── nodes.ts      # Agent node implementations
-│               ├── types.ts      # TypeScript interfaces
-│               ├── schema.ts     # Zod validation schemas
-│               └── databaseClient.ts # Knex.js database client
-├── client/                       # React frontend (Vite)
-│   └── src/
-│       ├── App.tsx               # Main application component
-│       ├── agent/                # Client-side agent (browser execution)
-│       └── index.css             # Tailwind CSS styles
-├── package.json                  # Root dependencies (server)
-├── vercel.json                   # Vercel deployment config
-└── .env                          # Environment variables (create this)
-```
 
 ---
 
@@ -230,29 +186,6 @@ SSL_CLIENT_KEY=/path/to/client-key.key    # For mTLS
 
 ---
 
-## 📋 API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/execute-sql` | POST | Execute a SQL query |
-| `/api/get-schema` | POST | Retrieve database schema |
-
-### Example: Execute SQL
-```bash
-curl -X POST http://localhost:3001/api/execute-sql \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "SELECT * FROM users LIMIT 10",
-    "config": {
-      "dbType": "postgres",
-      "dbUrl": "postgresql://user:pass@localhost:5432/mydb",
-      "ssl": true
-    }
-  }'
-```
-
----
-
 ## 🚀 Deployment
 
 ### Vercel (Recommended)
@@ -268,7 +201,7 @@ Vercel will automatically:
 - Start `npm start` (Node.js serverless function)
 - Serve static files from `client/dist/`
 
-### Docker (Coming Soon)
+### Docker
 ```dockerfile
 # Dockerfile example
 FROM node:20-alpine
@@ -280,53 +213,6 @@ RUN npm run build
 EXPOSE 3001
 CMD ["npm", "start"]
 ```
-
----
-
-## 🧠 How the Agent Works
-
-### Query Flow Example
-
-**User Input**: *"Show me the top 5 customers by total order value"*
-
-1. **Planner** analyzes the request:
-   ```json
-   {
-     "entities": "customers, orders",
-     "measure": "total order value",
-     "operation": "per_entity_argmax",
-     "constraint": "top 5"
-   }
-   ```
-
-2. **Decider** determines the SQL tool should be used with a JOIN query
-
-3. **Scope Reflector** evaluates:
-   - Confidence Score: 0.85 (high)
-   - Complexity: Medium
-   - Risk Level: Low (read-only)
-
-4. **Policy** approves the query (confidence > 0.95, non-destructive)
-
-5. **Executor** runs:
-   ```sql
-   SELECT c.customer_name, SUM(o.amount) as total_value
-   FROM customers c
-   JOIN orders o ON c.id = o.customer_id
-   GROUP BY c.id, c.customer_name
-   ORDER BY total_value DESC
-   LIMIT 5;
-   ```
-
-6. **Finalizer** returns formatted results with summary
-
-### Policy Enforcement
-The agent includes built-in safety policies:
-
-- **Confidence Threshold**: Queries with confidence ≤ 0.95 are rejected and trigger automatic replanning
-- **Destructive Operation Guard**: `DELETE`, `DROP`, `TRUNCATE` require explicit user context permissions
-- **Schema Awareness**: Validates table/column existence before execution
-- **Query Complexity Limits**: Large cross-joins and unbounded selects are flagged
 
 ---
 
@@ -387,15 +273,6 @@ Contributions are welcome! Please:
 ## 📜 License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [LangChain](https://github.com/langchain-ai/langchainjs) for the excellent LLM framework
-- [LangGraph](https://github.com/langchain-ai/langgraph) for agent orchestration
-- [Knex.js](https://knexjs.org/) for the versatile query builder
-- The open-source community for inspiration and tools
 
 ---
 
