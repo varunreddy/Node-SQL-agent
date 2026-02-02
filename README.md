@@ -306,7 +306,7 @@ CMD ["npm", "start"]
    - Complexity: Medium
    - Risk Level: Low (read-only)
 
-4. **Policy** approves the query (confidence ≥ 0.7, non-destructive)
+4. **Policy** approves the query (confidence > 0.95, non-destructive)
 
 5. **Executor** runs:
    ```sql
@@ -323,7 +323,7 @@ CMD ["npm", "start"]
 ### Policy Enforcement
 The agent includes built-in safety policies:
 
-- **Confidence Threshold**: Queries below 0.7 confidence are rejected and trigger replanning
+- **Confidence Threshold**: Queries with confidence ≤ 0.95 are rejected and trigger automatic replanning
 - **Destructive Operation Guard**: `DELETE`, `DROP`, `TRUNCATE` require explicit user context permissions
 - **Schema Awareness**: Validates table/column existence before execution
 - **Query Complexity Limits**: Large cross-joins and unbounded selects are flagged
